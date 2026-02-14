@@ -29,11 +29,18 @@ class DateRange:
 
 
 @dataclass
+class VideoSpeedConfig:
+    mode: str = "per_month"  # per_day, per_week, per_month, duration
+    value: float = 1.0  # seconds per unit, or total duration in seconds
+
+
+@dataclass
 class RenderingConfig:
     style: str = "timeline"
     output: str = "output.mp4"
     fps: int = 30
     resolution: tuple[int, int] = (1920, 1080)
+    video_speed: VideoSpeedConfig = field(default_factory=VideoSpeedConfig)
 
 
 @dataclass
@@ -88,11 +95,17 @@ def load_config(config_path: str | Path) -> Config:
 
     rend_raw = raw.get("rendering", {})
     res = rend_raw.get("resolution", [1920, 1080])
+    speed_raw = rend_raw.get("video_speed", {})
+    video_speed = VideoSpeedConfig(
+        mode=speed_raw.get("mode", "per_month"),
+        value=float(speed_raw.get("value", 1.0)),
+    )
     rendering = RenderingConfig(
         style=rend_raw.get("style", "timeline"),
         output=rend_raw.get("output", "output.mp4"),
         fps=rend_raw.get("fps", 30),
         resolution=(res[0], res[1]),
+        video_speed=video_speed,
     )
 
     return Config(

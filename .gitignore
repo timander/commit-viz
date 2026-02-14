@@ -27,3 +27,7 @@ Thumbs.db
 *.avi
 *.mkv
 output*.json
+*.png
+
+# Analysis repos (cloned repos inside analysis folders)
+analysis/*/repo/

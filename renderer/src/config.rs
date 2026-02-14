@@ -23,4 +23,16 @@ pub struct RenderConfig {
     /// Video height
     #[arg(long, default_value_t = 1080)]
     pub height: u32,
+
+    /// Target video duration in seconds (overrides auto-calculation)
+    #[arg(long)]
+    pub duration_secs: Option<u32>,
+
+    /// Rendering style: network or timeline
+    #[arg(long, default_value = "network")]
+    pub style: String,
+
+    /// Output path for statistics report PNG
+    #[arg(long)]
+    pub report_output: Option<PathBuf>,
 }

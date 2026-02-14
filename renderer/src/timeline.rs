@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::data::{CollectedData, Commit};
 use chrono::{DateTime, Utc};
 

@@ -13,8 +13,8 @@
           "type": "object",
           "required": ["start", "end"],
           "properties": {
-            "start": { "type": "string", "format": "date" },
-            "end": { "type": "string", "format": "date" }
+            "start": { "type": "string" },
+            "end": { "type": "string" }
           }
         },
         "generated_at": { "type": "string", "format": "date-time" }
@@ -51,10 +51,17 @@
             "items": { "type": "string" }
           },
           "conventional_type": {
-            "type": ["string", "null"],
-            "enum": ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert", null]
+            "type": ["string", "null"]
           },
-          "ticket_id": { "type": ["string", "null"] }
+          "ticket_id": { "type": ["string", "null"] },
+          "insertions": { "type": "integer", "default": 0 },
+          "deletions": { "type": "integer", "default": 0 },
+          "files_changed": { "type": "integer", "default": 0 },
+          "category": {
+            "type": "string",
+            "enum": ["feature", "bugfix", "docs", "refactor", "ci", "test", "release", "other"],
+            "default": "other"
+          }
         }
       }
     },
@@ -68,6 +75,43 @@
           "from_branch": { "type": "string" },
           "to_branch": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "statistics": {
+      "type": ["object", "null"],
+      "properties": {
+        "total_commits": { "type": "integer" },
+        "date_span_days": { "type": "integer" },
+        "commits_per_week": { "type": "number" },
+        "unique_authors": { "type": "integer" },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "by_branch": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "top_authors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "author": { "type": "string" },
+              "commits": { "type": "integer" }
+            }
+          }
+        },
+        "release_cycles": {
+          "type": "object",
+          "properties": {
+            "count": { "type": "integer" },
+            "mean_days": { "type": "number" },
+            "min_days": { "type": "number" },
+            "max_days": { "type": "number" },
+            "stdev_days": { "type": "number" }
+          }
         }
       }
     },
