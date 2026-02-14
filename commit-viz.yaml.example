@@ -1,0 +1,21 @@
+repo:
+  path: ./my-repo          # local clone path, or:
+  # url: https://github.com/org/repo
+
+date_range:
+  start: "2024-01-01"
+  end: "2024-06-01"
+
+sources:
+  git: true
+  github_actions: false     # opt-in
+  jira:                     # opt-in
+    enabled: false
+    projects: []
+    base_url: https://myorg.atlassian.net
+
+rendering:
+  style: timeline           # future: graph, flow
+  output: output.mp4
+  fps: 30
+  resolution: [1920, 1080]

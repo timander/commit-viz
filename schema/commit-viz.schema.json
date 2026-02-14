@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "commit-viz interchange format",
+  "type": "object",
+  "required": ["metadata", "branches", "commits", "merges"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["repo", "date_range", "generated_at"],
+      "properties": {
+        "repo": { "type": "string" },
+        "date_range": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "string", "format": "date" },
+            "end": { "type": "string", "format": "date" }
+          }
+        },
+        "generated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "is_default"],
+        "properties": {
+          "name": { "type": "string" },
+          "is_default": { "type": "boolean" }
+        }
+      }
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sha", "author", "timestamp", "branch", "message", "parents"],
+        "properties": {
+          "sha": { "type": "string" },
+          "author": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "branch": { "type": "string" },
+          "message": { "type": "string" },
+          "parents": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "conventional_type": {
+            "type": ["string", "null"],
+            "enum": ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert", null]
+          },
+          "ticket_id": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "merges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sha", "from_branch", "to_branch", "timestamp"],
+        "properties": {
+          "sha": { "type": "string" },
+          "from_branch": { "type": "string" },
+          "to_branch": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "deployments": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "ci_runs": {
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  }
+}

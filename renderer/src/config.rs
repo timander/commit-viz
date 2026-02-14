@@ -1,0 +1,26 @@
+use clap::Parser;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(name = "commit-viz-renderer", about = "Render commit timeline video")]
+pub struct RenderConfig {
+    /// Path to input JSON data file
+    #[arg(short, long)]
+    pub input: PathBuf,
+
+    /// Output video file path
+    #[arg(short, long, default_value = "output.mp4")]
+    pub output: PathBuf,
+
+    /// Frames per second
+    #[arg(long, default_value_t = 30)]
+    pub fps: u32,
+
+    /// Video width
+    #[arg(long, default_value_t = 1920)]
+    pub width: u32,
+
+    /// Video height
+    #[arg(long, default_value_t = 1080)]
+    pub height: u32,
+}
