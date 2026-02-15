@@ -17,7 +17,7 @@ sources:
 rendering:
   style: network
   output: spring-framework.mp4
-  fps: 30
+  fps: 90
   resolution: [1920, 1080]
   video_speed:
     mode: per_month

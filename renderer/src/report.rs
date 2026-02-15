@@ -5,13 +5,13 @@ use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Transform};
 
 fn category_color(category: &str) -> Color {
     match category {
-        "feature" => Color::from_rgba8(66, 133, 244, 255),
-        "bugfix" => Color::from_rgba8(234, 67, 53, 255),
+        "feature" => Color::from_rgba8(66, 165, 245, 255),
+        "bugfix" => Color::from_rgba8(239, 83, 80, 255),
         "release" => Color::from_rgba8(255, 215, 0, 255),
-        "refactor" => Color::from_rgba8(171, 71, 188, 255),
-        "docs" => Color::from_rgba8(124, 179, 66, 255),
-        "ci" => Color::from_rgba8(0, 172, 193, 255),
-        "test" => Color::from_rgba8(255, 152, 0, 255),
+        "refactor" => Color::from_rgba8(186, 104, 200, 255),
+        "docs" => Color::from_rgba8(129, 199, 132, 255),
+        "ci" => Color::from_rgba8(77, 208, 225, 255),
+        "test" => Color::from_rgba8(255, 167, 38, 255),
         _ => Color::from_rgba8(158, 158, 158, 255),
     }
 }
@@ -23,7 +23,7 @@ pub fn render_report(
     let width = 1920u32;
     let height = 1080u32;
     let mut pixmap = Pixmap::new(width, height).unwrap();
-    pixmap.fill(Color::from_rgba8(25, 25, 30, 255));
+    pixmap.fill(Color::from_rgba8(18, 18, 24, 255));
 
     let text = TextRenderer::new();
     let white = Color::from_rgba8(255, 255, 255, 255);
