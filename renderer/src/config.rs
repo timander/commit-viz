@@ -36,7 +36,7 @@ pub struct RenderConfig {
     #[arg(long)]
     pub report_output: Option<PathBuf>,
 
-    /// Output directory for waste visualization PNGs
+    /// Output directory for change flow visualization PNGs
     #[arg(long)]
-    pub waste_output_dir: Option<PathBuf>,
+    pub change_flow_dir: Option<PathBuf>,
 }

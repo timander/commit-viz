@@ -198,7 +198,7 @@ pub struct RollingAvgEntry {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
-pub struct WasteMetrics {
+pub struct ChangeFlowMetrics {
     #[serde(default)]
     pub commit_to_release_days: Vec<CommitToReleaseDayEntry>,
     #[serde(default)]
@@ -269,7 +269,7 @@ pub struct Statistics {
     pub top_authors: Vec<AuthorEntry>,
     #[serde(default)]
     pub release_cycles: ReleaseCycleStats,
-    pub waste_metrics: Option<WasteMetrics>,
+    pub change_flow: Option<ChangeFlowMetrics>,
 }
 
 #[derive(Debug, Deserialize)]

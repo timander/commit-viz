@@ -1,5 +1,5 @@
 repo:
-  path: /Users/timander/repos/commit-viz/analysis/slf4j/repo
+  path: repo
   url: https://github.com/qos-ch/slf4j
 
 date_range:
@@ -16,7 +16,7 @@ sources:
 
 rendering:
   style: network
-  output: /Users/timander/repos/commit-viz/analysis/slf4j/slf4j.mp4
+  output: slf4j.mp4
   fps: 30
   resolution: [1920, 1080]
   video_speed:

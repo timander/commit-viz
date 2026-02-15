@@ -113,7 +113,7 @@
             "stdev_days": { "type": "number" }
           }
         },
-        "waste_metrics": {
+        "change_flow": {
           "type": ["object", "null"],
           "properties": {
             "commit_to_release_days": {

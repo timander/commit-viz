@@ -1,5 +1,6 @@
-use crate::data::WasteMetrics;
+use crate::data::ChangeFlowMetrics;
 use crate::text::TextRenderer;
+use rayon::prelude::*;
 use std::path::Path;
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
@@ -186,7 +187,7 @@ fn save_chart(pixmap: &Pixmap, dir: &Path, name: &str) -> Result<(), Box<dyn std
 // Chart 1: Commit-to-Release Heatmap (calendar grid)
 // ============================================================
 pub fn render_commit_to_release_heatmap(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -194,10 +195,12 @@ pub fn render_commit_to_release_heatmap(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Commit-to-Release Latency Heatmap", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "How quickly do commits reach a tagged release? Green = shipped within days. Red = waited weeks.", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "Magenta = never released. Clusters of red suggest batch-heavy releases or delivery bottlenecks.", 40.0, 94.0, 13.0, dim());
 
     let entries = &wm.commit_to_release_days;
     if entries.is_empty() {
-        text.draw_text(&mut pixmap, "No data available", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "No data available", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "01_release_heatmap.png")?;
         return Ok(());
     }
@@ -207,7 +210,7 @@ pub fn render_commit_to_release_heatmap(
         "Median: {:.1}d | P90: {:.1}d | Released within 7d: {:.1}%",
         wm.release_median_latency, wm.release_p90_latency, wm.release_pct_within_7d
     );
-    text.draw_text(&mut pixmap, &stats, 40.0, 85.0, 16.0, light());
+    text.draw_text(&mut pixmap, &stats, 40.0, 115.0, 16.0, light());
 
     // Calendar layout: rows=day-of-week (Mon-Sun), columns=weeks
     // Parse all dates and find range
@@ -220,7 +223,7 @@ pub fn render_commit_to_release_heatmap(
     let cell_size = 10.0f32;
     let cell_gap = 2.0f32;
     let left_margin = 80.0f32;
-    let top_margin = 130.0f32;
+    let top_margin = 155.0f32;
 
     // Group entries by week index and day-of-week
     // Simple approach: use sequential day index from first date
@@ -315,7 +318,7 @@ pub fn render_commit_to_release_heatmap(
 // Chart 2: Branch Lifespan Gantt
 // ============================================================
 pub fn render_branch_lifespan_gantt(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -323,10 +326,12 @@ pub fn render_branch_lifespan_gantt(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Branch Lifespan Gantt Chart", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "How long do branches live before merging? Short green bars = rapid integration. Long red bars = diverging work.", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "Hatched bars with '!' = branches that never merged, increasing stale-code and merge-conflict risk.", 40.0, 94.0, 13.0, dim());
 
     let branches = &wm.branch_lifespans;
     if branches.is_empty() {
-        text.draw_text(&mut pixmap, "No branch data available", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "No branch data available", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "02_branch_gantt.png")?;
         return Ok(());
     }
@@ -335,7 +340,7 @@ pub fn render_branch_lifespan_gantt(
         "Median lifespan: {:.1}d | Unmerged: {} | Longest: {:.1}d",
         wm.branch_median_lifespan, wm.branch_unmerged_count, wm.branch_longest_days
     );
-    text.draw_text(&mut pixmap, &stats, 40.0, 85.0, 16.0, light());
+    text.draw_text(&mut pixmap, &stats, 40.0, 115.0, 16.0, light());
 
     // Show up to 30 branches
     let max_branches = 30.min(branches.len());
@@ -343,7 +348,7 @@ pub fn render_branch_lifespan_gantt(
 
     let chart_left = 250.0f32;
     let chart_right = WIDTH as f32 - 60.0;
-    let chart_top = 120.0f32;
+    let chart_top = 145.0f32;
     let bar_height = 22.0f32;
     let bar_gap = 4.0f32;
 
@@ -430,7 +435,7 @@ pub fn render_branch_lifespan_gantt(
 // Chart 3: Commit Velocity & Drought Periods
 // ============================================================
 pub fn render_velocity_drought(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -438,10 +443,12 @@ pub fn render_velocity_drought(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Commit Velocity & Drought Periods", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "Is the team committing consistently? Red spans = 7+ consecutive days with zero commits.", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "Frequent or long droughts may signal single-contributor dependency, blocked work, or seasonal patterns.", 40.0, 94.0, 13.0, dim());
 
     let velocity = &wm.daily_velocity;
     if velocity.is_empty() {
-        text.draw_text(&mut pixmap, "No velocity data", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "No velocity data", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "03_velocity_drought.png")?;
         return Ok(());
     }
@@ -450,11 +457,11 @@ pub fn render_velocity_drought(
         "Droughts (7+ days): {} | Longest: {}d | Total drought days: {}",
         wm.drought_count, wm.longest_drought_days, wm.total_drought_days
     );
-    text.draw_text(&mut pixmap, &stats, 40.0, 85.0, 16.0, light());
+    text.draw_text(&mut pixmap, &stats, 40.0, 115.0, 16.0, light());
 
     let chart_left = 80.0f32;
     let chart_right = WIDTH as f32 - 40.0;
-    let chart_top = 120.0f32;
+    let chart_top = 145.0f32;
     let chart_bottom = 750.0f32;
     let chart_w = chart_right - chart_left;
     let chart_h = chart_bottom - chart_top;
@@ -527,7 +534,7 @@ pub fn render_velocity_drought(
 // Chart 4: Commit-to-Merge Latency Scatter
 // ============================================================
 pub fn render_merge_latency_scatter(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -535,10 +542,12 @@ pub fn render_merge_latency_scatter(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Commit-to-Merge Latency Scatter", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "How quickly do branch commits get integrated? Dots below yellow (7d) = fast integration.", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "Above red (30d) or magenta at top (unmerged) = work at risk of going stale or causing conflicts.", 40.0, 94.0, 13.0, dim());
 
     let entries = &wm.commit_merge_latency;
     if entries.is_empty() {
-        text.draw_text(&mut pixmap, "No merge latency data", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "No merge latency data", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "04_merge_scatter.png")?;
         return Ok(());
     }
@@ -547,11 +556,11 @@ pub fn render_merge_latency_scatter(
         "Median merge latency: {:.1}d | Merged within 7d: {:.1}% | Within 30d: {:.1}%",
         wm.merge_median_latency, wm.merge_pct_within_7d, wm.merge_pct_within_30d
     );
-    text.draw_text(&mut pixmap, &stats, 40.0, 85.0, 16.0, light());
+    text.draw_text(&mut pixmap, &stats, 40.0, 115.0, 16.0, light());
 
     let chart_left = 100.0f32;
     let chart_right = WIDTH as f32 - 60.0;
-    let chart_top = 120.0f32;
+    let chart_top = 145.0f32;
     let chart_bottom = 980.0f32;
     let chart_w = chart_right - chart_left;
     let chart_h = chart_bottom - chart_top;
@@ -622,7 +631,7 @@ pub fn render_merge_latency_scatter(
 // Chart 5: Release Cadence Lollipop + Distribution
 // ============================================================
 pub fn render_release_cadence(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -630,10 +639,12 @@ pub fn render_release_cadence(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Release Cadence & Interval Distribution", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "How predictable is the release rhythm? Green dots within the band are healthy intervals.", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "Outlier red dots suggest disruptions. A high CV (>0.5) means unpredictable delivery timing.", 40.0, 94.0, 13.0, dim());
 
     let intervals = &wm.release_intervals;
     if intervals.is_empty() {
-        text.draw_text(&mut pixmap, "Not enough releases for analysis", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "Not enough releases for analysis", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "05_release_cadence.png")?;
         return Ok(());
     }
@@ -643,12 +654,12 @@ pub fn render_release_cadence(
         wm.release_interval_mean, wm.release_interval_median,
         wm.release_interval_cv, wm.release_interval_longest_gap
     );
-    text.draw_text(&mut pixmap, &stats, 40.0, 85.0, 16.0, light());
+    text.draw_text(&mut pixmap, &stats, 40.0, 115.0, 16.0, light());
 
     // Lollipop chart (left 70% of width)
     let lollipop_right = WIDTH as f32 * 0.68;
     let chart_left = 80.0f32;
-    let chart_top = 130.0f32;
+    let chart_top = 150.0f32;
     let chart_bottom = 950.0f32;
     let chart_h = chart_bottom - chart_top;
     let chart_w = lollipop_right - chart_left;
@@ -731,7 +742,7 @@ pub fn render_release_cadence(
 // Chart 6: Work Disposition Donut
 // ============================================================
 pub fn render_work_disposition_donut(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     text: &TextRenderer,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -739,13 +750,15 @@ pub fn render_work_disposition_donut(
     pixmap.fill(bg());
 
     text.draw_text(&mut pixmap, "Work Disposition", 40.0, 50.0, 28.0, white());
+    text.draw_text(&mut pixmap, "What proportion of work ships quickly vs. slowly vs. not at all? A healthy codebase shows mostly", 40.0, 78.0, 13.0, dim());
+    text.draw_text(&mut pixmap, "green (fast-merged). Large yellow or red segments indicate slow review cycles or abandoned work.", 40.0, 94.0, 13.0, dim());
 
     let wd = &wm.work_disposition;
     let total_lines = wd.fast_merged_lines + wd.slow_merged_lines + wd.unmerged_lines;
     let total_commits = wd.fast_merged_commits + wd.slow_merged_commits + wd.unmerged_commits;
 
     if total_lines == 0 {
-        text.draw_text(&mut pixmap, "No disposition data", 40.0, 120.0, 18.0, dim());
+        text.draw_text(&mut pixmap, "No disposition data", 40.0, 130.0, 18.0, dim());
         save_chart(&pixmap, dir, "06_work_disposition.png")?;
         return Ok(());
     }
@@ -911,20 +924,36 @@ fn draw_arc_filled(
     }
 }
 
-/// Render all 6 waste charts to the specified directory
+/// Render all 6 change flow charts to the specified directory (parallel)
 pub fn render_all(
-    wm: &WasteMetrics,
+    wm: &ChangeFlowMetrics,
     dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(dir)?;
-    let text = TextRenderer::new();
 
-    render_commit_to_release_heatmap(wm, &text, dir)?;
-    render_branch_lifespan_gantt(wm, &text, dir)?;
-    render_velocity_drought(wm, &text, dir)?;
-    render_merge_latency_scatter(wm, &text, dir)?;
-    render_release_cadence(wm, &text, dir)?;
-    render_work_disposition_donut(wm, &text, dir)?;
+    // Each chart gets its own TextRenderer since they run in parallel threads
+    let renderers: Vec<(&str, Box<dyn Fn(&ChangeFlowMetrics, &TextRenderer, &Path) -> Result<(), Box<dyn std::error::Error>> + Send + Sync>)> = vec![
+        ("01_release_heatmap", Box::new(render_commit_to_release_heatmap)),
+        ("02_branch_gantt", Box::new(render_branch_lifespan_gantt)),
+        ("03_velocity_drought", Box::new(render_velocity_drought)),
+        ("04_merge_scatter", Box::new(render_merge_latency_scatter)),
+        ("05_release_cadence", Box::new(render_release_cadence)),
+        ("06_work_disposition", Box::new(render_work_disposition_donut)),
+    ];
+
+    let results: Vec<Result<(), String>> = renderers
+        .par_iter()
+        .map(|(name, render_fn)| {
+            let text = TextRenderer::new();
+            render_fn(wm, &text, dir).map_err(|e| format!("Error rendering {}: {}", name, e))
+        })
+        .collect();
+
+    for result in results {
+        if let Err(e) = result {
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }

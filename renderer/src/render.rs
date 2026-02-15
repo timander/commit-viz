@@ -2,6 +2,7 @@ use crate::config::RenderConfig;
 use crate::data::CollectedData;
 use crate::layout::{NetworkLayout, PositionedCommit, PositionedMerge, DateTick};
 use crate::text::TextRenderer;
+use rayon::prelude::*;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Stroke, Transform};
@@ -344,26 +345,45 @@ pub fn render_video(
 
     let stdin = ffmpeg.stdin.as_mut().expect("Failed to open FFmpeg stdin");
 
-    for frame_idx in 0..total_frames {
-        // Map frame index to number of visible commits
-        let progress = (frame_idx + 1) as f32 / total_frames as f32;
-        let visible_count = ((progress * num_commits as f32).ceil() as usize).min(num_commits);
+    // Render frames in parallel batches then write sequentially to ffmpeg
+    let batch_size = rayon::current_num_threads() * 2;
+    let mut frame_idx = 0u32;
 
-        let pixmap = render_frame(
-            &layout,
-            &positioned_commits,
-            &positioned_merges,
-            &date_ticks,
-            &text_renderer,
-            visible_count,
-            config.width,
-            config.height,
-        );
-        stdin.write_all(pixmap.data())?;
+    while frame_idx < total_frames {
+        let batch_end = (frame_idx + batch_size as u32).min(total_frames);
+        let indices: Vec<u32> = (frame_idx..batch_end).collect();
 
-        if frame_idx % config.fps == 0 {
-            eprint!("\r  Frame {}/{}", frame_idx + 1, total_frames);
+        // Render batch in parallel
+        let frames: Vec<Pixmap> = indices
+            .par_iter()
+            .map(|&idx| {
+                let progress = (idx + 1) as f32 / total_frames as f32;
+                let visible_count = ((progress * num_commits as f32).ceil() as usize).min(num_commits);
+                // Each thread gets its own TextRenderer
+                let tr = TextRenderer::new();
+                render_frame(
+                    &layout,
+                    &positioned_commits,
+                    &positioned_merges,
+                    &date_ticks,
+                    &tr,
+                    visible_count,
+                    config.width,
+                    config.height,
+                )
+            })
+            .collect();
+
+        // Write batch sequentially to ffmpeg (must be in order)
+        for pixmap in &frames {
+            stdin.write_all(pixmap.data())?;
         }
+
+        if frame_idx % config.fps == 0 || batch_end == total_frames {
+            eprint!("\r  Frame {}/{}", batch_end, total_frames);
+        }
+
+        frame_idx = batch_end;
     }
 
     drop(ffmpeg.stdin.take());

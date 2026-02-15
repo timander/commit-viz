@@ -16,7 +16,7 @@ from commit_viz.models import (
     HistogramBin,
     Merge,
     ReleaseInterval,
-    WasteMetrics,
+    ChangeFlowMetrics,
     WorkDisposition,
     WorkDispositionSegment,
 )
@@ -58,13 +58,13 @@ def _find_default_branch(branches: list[Branch]) -> str:
     return "main"
 
 
-def compute_waste_metrics(
+def compute_change_flow(
     commits: list[Commit],
     merges: list[Merge],
     branches: list[Branch],
-) -> WasteMetrics:
+) -> ChangeFlowMetrics:
     if not commits:
-        return WasteMetrics()
+        return ChangeFlowMetrics()
 
     default_branch = _find_default_branch(branches)
 
@@ -341,7 +341,7 @@ def compute_waste_metrics(
         for (cat, speed), (lines, cnt) in sorted(segment_agg.items())
     ]
 
-    return WasteMetrics(
+    return ChangeFlowMetrics(
         commit_to_release_days=commit_to_release_days,
         release_median_latency=round(_median(all_release_latencies), 1),
         release_p90_latency=round(_percentile(all_release_latencies, 90), 1),

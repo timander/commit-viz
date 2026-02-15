@@ -110,7 +110,7 @@ class WorkDisposition:
 
 
 @dataclass
-class WasteMetrics:
+class ChangeFlowMetrics:
     commit_to_release_days: list[CommitToReleaseDayEntry] = field(default_factory=list)
     release_median_latency: float = 0.0
     release_p90_latency: float = 0.0
@@ -157,7 +157,7 @@ class Statistics:
     by_branch: dict[str, int] = field(default_factory=dict)
     top_authors: list[dict[str, int | str]] = field(default_factory=list)
     release_cycles: ReleaseCycleStats = field(default_factory=ReleaseCycleStats)
-    waste_metrics: WasteMetrics | None = None
+    change_flow: ChangeFlowMetrics | None = None
 
 
 @dataclass

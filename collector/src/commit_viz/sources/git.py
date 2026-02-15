@@ -64,15 +64,23 @@ def _classify_category(message: str, conventional_type: str | None) -> str:
     return "other"
 
 
+def _parse_date_bound(value: str) -> datetime | None:
+    """Parse a date-range bound, returning None for empty/special values like 'all'."""
+    if not value or value.lower() in ("all", "beginning", "present", "now", "today"):
+        return None
+    try:
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 def _in_date_range(ts: datetime, start: str, end: str) -> bool:
-    if start:
-        start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
-        if ts < start_dt:
-            return False
-    if end:
-        end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
-        if ts > end_dt:
-            return False
+    start_dt = _parse_date_bound(start)
+    if start_dt and ts < start_dt:
+        return False
+    end_dt = _parse_date_bound(end)
+    if end_dt and ts > end_dt:
+        return False
     return True
 
 

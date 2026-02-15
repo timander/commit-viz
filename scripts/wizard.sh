@@ -15,12 +15,14 @@ if [[ "$REPO_INPUT" =~ ^https?:// ]]; then
     # Extract slug from URL (last path component, without .git)
     SLUG=$(basename "$REPO_INPUT" .git)
     REPO_URL="$REPO_INPUT"
-    REPO_PATH="$ANALYSIS_DIR/$SLUG/repo"
+    REPO_PATH_CONFIG="repo"  # relative to config file location
+    REPO_PATH_ABS="$ANALYSIS_DIR/$SLUG/repo"  # for runtime use
 else
     # Local path — use directory name as slug
     SLUG=$(basename "$REPO_INPUT")
     REPO_URL=""
-    REPO_PATH="$(cd "$REPO_INPUT" 2>/dev/null && pwd || echo "$REPO_INPUT")"
+    REPO_PATH_CONFIG="$REPO_INPUT"  # keep user-provided path
+    REPO_PATH_ABS="$(cd "$REPO_INPUT" 2>/dev/null && pwd || echo "$REPO_INPUT")"
 fi
 
 echo "  Project slug: $SLUG"
@@ -61,7 +63,7 @@ mkdir -p "$ANALYSIS_SLUG_DIR"
 CONFIG_PATH="$ANALYSIS_SLUG_DIR/config.yaml"
 cat > "$CONFIG_PATH" <<EOF
 repo:
-  path: $REPO_PATH
+  path: $REPO_PATH_CONFIG
   url: $REPO_URL
 
 date_range:
@@ -78,7 +80,7 @@ sources:
 
 rendering:
   style: network
-  output: $ANALYSIS_SLUG_DIR/$SLUG.mp4
+  output: $SLUG.mp4
   fps: 30
   resolution: [1920, 1080]
   video_speed:
@@ -114,7 +116,7 @@ echo "Running renderer..."
 $RENDERER --input "$OUTPUT_JSON" --output "$ANALYSIS_SLUG_DIR/$SLUG.mp4" \
     --style network \
     --report-output "$ANALYSIS_SLUG_DIR/report.png" \
-    --waste-output-dir "$ANALYSIS_SLUG_DIR/waste" \
+    --change-flow-dir "$ANALYSIS_SLUG_DIR/change-flow" \
     $DURATION_FLAG
 
 echo

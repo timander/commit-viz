@@ -3,8 +3,8 @@ repo:
   url: https://github.com/neovim/neovim
 
 date_range:
-  start: "2020-01-01"
-  end: "2026-02-01"
+  start: "all"
+  end: ""
 
 sources:
   git: true
@@ -20,5 +20,5 @@ rendering:
   fps: 30
   resolution: [1920, 1080]
   video_speed:
-    mode: per_month
-    value: 1.0
+    mode: duration
+    value: 60
