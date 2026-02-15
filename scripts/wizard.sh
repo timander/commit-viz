@@ -114,6 +114,7 @@ echo "Running renderer..."
 $RENDERER --input "$OUTPUT_JSON" --output "$ANALYSIS_SLUG_DIR/$SLUG.mp4" \
     --style network \
     --report-output "$ANALYSIS_SLUG_DIR/report.png" \
+    --waste-output-dir "$ANALYSIS_SLUG_DIR/waste" \
     $DURATION_FLAG
 
 echo

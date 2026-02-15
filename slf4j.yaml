@@ -1,0 +1,21 @@
+repo:
+  path: ../commit-viz-analyze/slf4j
+  url: https://github.com/qos-ch/slf4j
+
+date_range:
+  start: "2022-01-01"
+  end: "2026-01-01"
+
+sources:
+  git: true
+  github_actions: false     # opt-in
+  jira:                     # opt-in
+    enabled: false
+    projects: []
+    base_url: https://myorg.atlassian.net
+
+rendering:
+  style: timeline           # future: graph, flow
+  output: output.mp4
+  fps: 30
+  resolution: [1920, 1080]

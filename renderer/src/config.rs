@@ -35,4 +35,8 @@ pub struct RenderConfig {
     /// Output path for statistics report PNG
     #[arg(long)]
     pub report_output: Option<PathBuf>,
+
+    /// Output directory for waste visualization PNGs
+    #[arg(long)]
+    pub waste_output_dir: Option<PathBuf>,
 }

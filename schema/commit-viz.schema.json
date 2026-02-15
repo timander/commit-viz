@@ -112,6 +112,144 @@
             "max_days": { "type": "number" },
             "stdev_days": { "type": "number" }
           }
+        },
+        "waste_metrics": {
+          "type": ["object", "null"],
+          "properties": {
+            "commit_to_release_days": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": { "type": "string" },
+                  "avg_days_to_release": { "type": "number" },
+                  "commit_count": { "type": "integer" },
+                  "unreleased_count": { "type": "integer" }
+                }
+              }
+            },
+            "release_median_latency": { "type": "number" },
+            "release_p90_latency": { "type": "number" },
+            "release_pct_within_7d": { "type": "number" },
+            "branch_lifespans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "branch": { "type": "string" },
+                  "first_commit": { "type": "string" },
+                  "last_commit": { "type": "string" },
+                  "lifespan_days": { "type": "number" },
+                  "merged": { "type": "boolean" },
+                  "commit_count": { "type": "integer" }
+                }
+              }
+            },
+            "branch_median_lifespan": { "type": "number" },
+            "branch_unmerged_count": { "type": "integer" },
+            "branch_longest_days": { "type": "number" },
+            "daily_velocity": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": { "type": "string" },
+                  "count": { "type": "integer" },
+                  "dominant_category": { "type": "string" }
+                }
+              }
+            },
+            "rolling_7day_avg": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": { "type": "string" },
+                  "avg": { "type": "number" }
+                }
+              }
+            },
+            "drought_periods": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "start_date": { "type": "string" },
+                  "end_date": { "type": "string" },
+                  "duration_days": { "type": "integer" }
+                }
+              }
+            },
+            "drought_count": { "type": "integer" },
+            "longest_drought_days": { "type": "integer" },
+            "total_drought_days": { "type": "integer" },
+            "commit_merge_latency": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sha": { "type": "string" },
+                  "commit_date": { "type": "string" },
+                  "days_to_merge": { "type": ["number", "null"] },
+                  "lines_changed": { "type": "integer" },
+                  "category": { "type": "string" }
+                }
+              }
+            },
+            "merge_median_latency": { "type": "number" },
+            "merge_pct_within_7d": { "type": "number" },
+            "merge_pct_within_30d": { "type": "number" },
+            "release_intervals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tag": { "type": "string" },
+                  "date": { "type": "string" },
+                  "days_since_previous": { "type": "number" }
+                }
+              }
+            },
+            "release_interval_distribution": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "min_val": { "type": "number" },
+                  "max_val": { "type": "number" },
+                  "count": { "type": "integer" }
+                }
+              }
+            },
+            "release_interval_mean": { "type": "number" },
+            "release_interval_median": { "type": "number" },
+            "release_interval_cv": { "type": "number" },
+            "release_interval_longest_gap": { "type": "number" },
+            "work_disposition": {
+              "type": "object",
+              "properties": {
+                "fast_merged_lines": { "type": "integer" },
+                "slow_merged_lines": { "type": "integer" },
+                "unmerged_lines": { "type": "integer" },
+                "fast_merged_commits": { "type": "integer" },
+                "slow_merged_commits": { "type": "integer" },
+                "unmerged_commits": { "type": "integer" },
+                "segments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "category": { "type": "string" },
+                      "merge_speed": { "type": "string" },
+                      "lines_changed": { "type": "integer" },
+                      "commit_count": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

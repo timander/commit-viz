@@ -11,6 +11,7 @@ from commit_viz.output import serialize
 from commit_viz.sources.clone import ensure_repo
 from commit_viz.sources.git import collect_git
 from commit_viz.sources.stats import compute_statistics
+from commit_viz.sources.waste import compute_waste_metrics
 
 
 @click.group()
@@ -54,6 +55,11 @@ def collect(config_path: str, output_path: str) -> None:
         click.echo("Computing statistics...")
         data.statistics = compute_statistics(commits)
         click.echo(f"  {data.statistics.unique_authors} authors, {data.statistics.commits_per_week} commits/week")
+
+        click.echo("Computing waste metrics...")
+        data.statistics.waste_metrics = compute_waste_metrics(commits, merges, data.branches)
+        click.echo(f"  {data.statistics.waste_metrics.drought_count} drought periods, "
+                    f"{data.statistics.waste_metrics.branch_unmerged_count} unmerged branches")
 
     output = Path(output_path)
     serialize(data, output)
