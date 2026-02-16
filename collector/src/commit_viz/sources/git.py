@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
+import time
 from datetime import datetime, timezone
 
 from git import Repo
@@ -40,6 +42,12 @@ _CONVENTIONAL_TO_CATEGORY: dict[str, str] = {
     "chore": "other",
     "revert": "other",
 }
+
+
+def _progress(msg: str, end: str = "") -> None:
+    """Write a progress message to stderr, overwriting the current line."""
+    sys.stderr.write(f"\r  {msg}".ljust(80) + end)
+    sys.stderr.flush()
 
 
 def _parse_conventional_type(message: str) -> str | None:
@@ -93,6 +101,9 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
 
     Returns a dict mapping SHA -> (insertions, deletions, files_changed).
     """
+    _progress("Running git log --numstat (this may take a moment)...")
+
+    t0 = time.monotonic()
     result = subprocess.run(
         ["git", "log", "--all", "--numstat", "--format=%H"],
         capture_output=True,
@@ -105,8 +116,13 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
     ins = 0
     dels = 0
     files = 0
+    line_count = 0
 
-    for line in result.stdout.splitlines():
+    lines = result.stdout.splitlines()
+    total_lines = len(lines)
+
+    for line in lines:
+        line_count += 1
         line = line.strip()
         if not line:
             continue
@@ -120,6 +136,9 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
             ins = 0
             dels = 0
             files = 0
+
+            if len(stats) % 500 == 0:
+                _progress(f"Parsing numstat: {len(stats)} commits processed ({line_count}/{total_lines} lines)...")
         elif current_sha is not None:
             # numstat line: insertions\tdeletions\tfilename
             parts = line.split("\t")
@@ -137,6 +156,9 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
     if current_sha is not None:
         stats[current_sha] = (ins, dels, files)
 
+    elapsed = time.monotonic() - t0
+    _progress(f"Numstat: {len(stats)} commits parsed [{elapsed:.1f}s]", end="\n")
+
     return stats
 
 
@@ -145,6 +167,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     if repo_path is None:
         raise ValueError("repo.path is required for git collection")
 
+    _progress("Opening repository...")
     repo = Repo(repo_path)
 
     # Determine default branch
@@ -154,6 +177,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
         default_branch = "main"
 
     # Collect branches
+    _progress("Scanning branches...")
     branch_names: set[str] = set()
     for ref in repo.references:
         name = ref.name
@@ -167,28 +191,52 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
         Branch(name=name, is_default=(name == default_branch))
         for name in sorted(branch_names)
     ]
+    _progress(f"Found {len(branches)} branches", end="\n")
 
     # Build tag map: commit sha -> list of tag names
+    _progress("Scanning tags...")
     tag_map: dict[str, list[str]] = {}
     for tag in repo.tags:
         sha = tag.commit.hexsha
         tag_map.setdefault(sha, []).append(tag.name)
+    _progress(f"Found {len(tag_map)} tagged commits", end="\n")
 
     # Build branch membership: walk each branch and record commits
+    _progress("Building branch membership map...")
     commit_to_branches: dict[str, set[str]] = {}
+    ref_count = 0
+    total_refs = len(list(repo.references))
+    t0 = time.monotonic()
     for ref in repo.references:
+        ref_count += 1
         branch_name = ref.name
         if branch_name.startswith("origin/"):
             branch_name = branch_name[len("origin/"):]
         if branch_name == "HEAD":
             continue
+
+        commit_count_this_ref = 0
         for c in repo.iter_commits(ref):
             commit_to_branches.setdefault(c.hexsha, set()).add(branch_name)
+            commit_count_this_ref += 1
+
+        if ref_count % 10 == 0 or ref_count == total_refs:
+            _progress(
+                f"Branch membership: {ref_count}/{total_refs} refs, "
+                f"{len(commit_to_branches)} unique commits..."
+            )
+
+    elapsed = time.monotonic() - t0
+    _progress(
+        f"Branch membership: {len(commit_to_branches)} commits across {total_refs} refs [{elapsed:.1f}s]",
+        end="\n",
+    )
 
     # Batch-collect numstat
     numstat = _collect_numstat(repo_path)
 
     # Walk all commits
+    _progress("Processing commits...")
     seen: set[str] = set()
     commits: list[Commit] = []
     merges: list[Merge] = []
@@ -196,7 +244,10 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     start = config.date_range.start
     end = config.date_range.end
 
+    t0 = time.monotonic()
+    ref_count = 0
     for ref in repo.references:
+        ref_count += 1
         for c in repo.iter_commits(ref):
             if c.hexsha in seen:
                 continue
@@ -245,6 +296,18 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
                     timestamp=ts.isoformat(),
                 )
                 merges.append(merge)
+
+            if len(seen) % 500 == 0:
+                _progress(
+                    f"Processing: {len(seen)} seen, {len(commits)} matched, "
+                    f"ref {ref_count}/{total_refs}..."
+                )
+
+    elapsed = time.monotonic() - t0
+    _progress(
+        f"Processed {len(seen)} commits, {len(commits)} in range, {len(merges)} merges [{elapsed:.1f}s]",
+        end="\n",
+    )
 
     # Sort commits by timestamp
     commits.sort(key=lambda c: c.timestamp)

@@ -1,4 +1,8 @@
-.PHONY: analyze rerun change-flow build-renderer build-collector
+.PHONY: analyze rerun change-flow build-renderer build-collector doctor
+
+# Environment health check — run first to verify all dependencies
+doctor:
+	@bash scripts/doctor.sh
 
 # Interactive wizard — prompts for repo, date range, speed
 analyze:

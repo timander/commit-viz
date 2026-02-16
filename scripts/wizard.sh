@@ -7,7 +7,8 @@ ANALYSIS_DIR="$PROJECT_ROOT/analysis"
 echo "=== commit-viz wizard ==="
 echo
 
-# Detect existing projects
+# ── Detect existing projects ────────────────────────────────────────────────
+
 EXISTING_PROJECTS=()
 if [ -d "$ANALYSIS_DIR" ]; then
     for dir in "$ANALYSIS_DIR"/*/; do
@@ -26,7 +27,6 @@ if [ ${#EXISTING_PROJECTS[@]} -gt 0 ]; then
     for i in "${!EXISTING_PROJECTS[@]}"; do
         slug="${EXISTING_PROJECTS[$i]}"
         dir="$ANALYSIS_DIR/$slug"
-        # Show summary info
         has_video=""
         has_data=""
         has_charts=""
@@ -51,32 +51,61 @@ if [ ${#EXISTING_PROJECTS[@]} -gt 0 ]; then
     fi
 fi
 
+# ── Helper: parse git URL (HTTPS, SSH, or local path) ───────────────────────
+
+parse_repo_input() {
+    local input="$1"
+
+    if [[ "$input" =~ ^https?:// ]]; then
+        # HTTPS URL: https://github.com/org/repo.git
+        SLUG=$(basename "$input" .git)
+        REPO_URL="$input"
+        REPO_PATH_CONFIG="repo"
+
+    elif [[ "$input" =~ ^git@ ]]; then
+        # SSH URL: git@github.com:org/repo.git
+        # Extract the repo name from after the last / or :
+        local path_part="${input#*:}"           # org/repo.git
+        SLUG=$(basename "$path_part" .git)      # repo
+
+        # Convert to HTTPS for display/config, keep SSH for cloning
+        local host="${input%%:*}"               # git@github.com
+        host="${host#git@}"                     # github.com
+        REPO_URL="$input"
+        REPO_PATH_CONFIG="repo"
+
+    elif [[ "$input" =~ ^ssh:// ]]; then
+        # ssh://git@github.com/org/repo.git
+        SLUG=$(basename "$input" .git)
+        REPO_URL="$input"
+        REPO_PATH_CONFIG="repo"
+
+    else
+        # Local path
+        SLUG=$(basename "$input")
+        REPO_URL=""
+        REPO_PATH_CONFIG="$input"
+    fi
+}
+
+# ── New project setup ───────────────────────────────────────────────────────
+
 if [ "$ACTION" = "new" ]; then
     echo
-    # 1. Repository URL or local path
-    read -rp "Repository (GitHub URL or local path): " REPO_INPUT
+    read -rp "Repository (HTTPS URL, SSH git@... URL, or local path): " REPO_INPUT
 
-    # Determine slug and whether to clone
-    if [[ "$REPO_INPUT" =~ ^https?:// ]]; then
-        SLUG=$(basename "$REPO_INPUT" .git)
-        REPO_URL="$REPO_INPUT"
-        REPO_PATH_CONFIG="repo"
-    else
-        SLUG=$(basename "$REPO_INPUT")
-        REPO_URL=""
-        REPO_PATH_CONFIG="$REPO_INPUT"
-    fi
+    parse_repo_input "$REPO_INPUT"
 
     echo "  Project slug: $SLUG"
 
-    # 2. Date range
+    # Date range
     read -rp "Date range start [all]: " DATE_START
     DATE_START="${DATE_START:-}"
 
     read -rp "Date range end [today]: " DATE_END
     DATE_END="${DATE_END:-}"
 
-    # 3. Video pace
+    # Video pace
     echo "Video pace:"
     echo "  1) per day"
     echo "  2) per week"
@@ -97,6 +126,53 @@ if [ "$ACTION" = "new" ]; then
         *) SPEED_MODE="per_month"; SPEED_VALUE="1.0" ;;
     esac
 
+    # ── Jira integration ────────────────────────────────────────────────────
+
+    JIRA_ENABLED="false"
+    JIRA_BASE_URL=""
+    JIRA_PROJECTS_YAML="[]"
+
+    echo
+    read -rp "Enable Jira integration? [y/N]: " JIRA_CHOICE
+    if [[ "${JIRA_CHOICE:-N}" =~ ^[Yy] ]]; then
+        # Check for required env vars
+        if [ -z "${JIRA_API_TOKEN:-}" ]; then
+            echo "  JIRA_API_TOKEN not set."
+            echo "  Set it in your environment or in a .env file at the project root."
+            echo "  Example: export JIRA_API_TOKEN=your-token-here"
+            read -rp "  Continue without Jira? [Y/n]: " SKIP_JIRA
+            if [[ "${SKIP_JIRA:-Y}" =~ ^[Nn] ]]; then
+                echo "  Aborting."
+                exit 1
+            fi
+        else
+            if [ -z "${JIRA_USER_EMAIL:-}" ]; then
+                read -rp "  Jira user email: " JIRA_USER_EMAIL
+                export JIRA_USER_EMAIL
+            fi
+            read -rp "  Jira base URL (e.g. https://yourorg.atlassian.net): " JIRA_BASE_URL
+            read -rp "  Jira project keys (comma-separated, e.g. PROJ,TEAM): " JIRA_PROJECTS_INPUT
+
+            JIRA_ENABLED="true"
+            # Convert comma-separated to YAML list
+            JIRA_PROJECTS_YAML="[$(echo "$JIRA_PROJECTS_INPUT" | sed 's/,/, /g')]"
+            echo "  Jira enabled: $JIRA_BASE_URL ($JIRA_PROJECTS_INPUT)"
+        fi
+    fi
+
+    # ── GitHub Actions integration ──────────────────────────────────────────
+
+    GH_ACTIONS="false"
+
+    # Auto-detect if gh is authenticated and repo is on GitHub
+    if [[ "$REPO_URL" == *github.com* ]] && command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+        echo
+        read -rp "Enable GitHub Actions data? (gh cli detected) [y/N]: " GH_CHOICE
+        if [[ "${GH_CHOICE:-N}" =~ ^[Yy] ]]; then
+            GH_ACTIONS="true"
+        fi
+    fi
+
     # Create analysis directory
     ANALYSIS_SLUG_DIR="$ANALYSIS_DIR/$SLUG"
     mkdir -p "$ANALYSIS_SLUG_DIR"
@@ -114,11 +190,11 @@ date_range:
 
 sources:
   git: true
-  github_actions: false
+  github_actions: $GH_ACTIONS
   jira:
-    enabled: false
-    projects: []
-    base_url: ""
+    enabled: $JIRA_ENABLED
+    projects: $JIRA_PROJECTS_YAML
+    base_url: "$JIRA_BASE_URL"
 
 rendering:
   style: network
@@ -139,14 +215,16 @@ fi
 
 echo
 
-# Run collector
+# ── Run collector ───────────────────────────────────────────────────────────
+
 OUTPUT_JSON="$ANALYSIS_SLUG_DIR/output.json"
 echo "Running collector..."
 cd "$PROJECT_ROOT/collector"
 uv run commit-viz collect --config "$CONFIG_PATH" --output "$OUTPUT_JSON"
 echo
 
-# Build renderer if needed
+# ── Build and run renderer ──────────────────────────────────────────────────
+
 echo "Building renderer..."
 cd "$PROJECT_ROOT/renderer"
 cargo build --release 2>&1 | tail -1
@@ -159,7 +237,6 @@ if grep -q "mode: duration" "$CONFIG_PATH" 2>/dev/null; then
     DURATION_FLAG="--duration-secs ${SPEED_VALUE%.*}"
 fi
 
-# Run renderer
 echo "Running renderer..."
 $RENDERER --input "$OUTPUT_JSON" --output "$ANALYSIS_SLUG_DIR/$SLUG.mp4" \
     --style network \
