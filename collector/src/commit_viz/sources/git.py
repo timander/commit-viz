@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from git import Repo
@@ -236,6 +238,73 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
     return stats
 
 
+def _build_branch_membership(
+    repo, refs: list, max_workers: int,
+) -> dict[str, set[str]]:
+    """Build branch membership map: commit SHA -> set of branch names.
+
+    Parallelizes across refs using ThreadPoolExecutor (GitPython subprocess
+    calls release the GIL).
+    """
+    _progress("Building branch membership map (parallel)...")
+    commit_to_branches: dict[str, set[str]] = {}
+    lock = threading.Lock()
+    total_refs = len(refs)
+    ref_count = 0
+    t0 = time.monotonic()
+    last_progress_time = time.monotonic()
+
+    def process_ref(ref):
+        nonlocal ref_count, last_progress_time
+        branch_name = ref.name
+        if branch_name.startswith("origin/"):
+            branch_name = branch_name[len("origin/"):]
+        if branch_name == "HEAD":
+            return
+
+        local_map: dict[str, str] = {}
+        for c in repo.iter_commits(ref):
+            local_map[c.hexsha] = branch_name
+
+        with lock:
+            for sha, bname in local_map.items():
+                commit_to_branches.setdefault(sha, set()).add(bname)
+            ref_count += 1
+            now = time.monotonic()
+            if (ref_count % 10 == 0 or ref_count == total_refs) and now - last_progress_time > 0.3:
+                elapsed = now - t0
+                _progress(
+                    f"Branch map: {ref_count}/{total_refs} refs, "
+                    f"{len(commit_to_branches)} commits [{elapsed:.0f}s]..."
+                )
+                last_progress_time = now
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        list(pool.map(process_ref, refs))
+
+    elapsed = time.monotonic() - t0
+    _progress(
+        f"Branch map: {len(commit_to_branches)} commits across {total_refs} refs [{elapsed:.1f}s]",
+        end="\n",
+    )
+    return commit_to_branches
+
+
+def _detect_default_branch(repo, branch_names: set[str]) -> str:
+    """Detect default branch with priority: main > active_branch > master > sorted first."""
+    if "main" in branch_names:
+        return "main"
+    try:
+        active = repo.active_branch.name
+        if active in branch_names:
+            return active
+    except TypeError:
+        pass
+    if "master" in branch_names:
+        return "master"
+    return sorted(branch_names)[0] if branch_names else "main"
+
+
 def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]]:
     repo_path = config.repo.path
     if repo_path is None:
@@ -243,12 +312,6 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
 
     _progress("Opening repository...")
     repo = Repo(repo_path)
-
-    # Determine default branch
-    try:
-        default_branch = repo.active_branch.name
-    except TypeError:
-        default_branch = "main"
 
     # Collect branches
     _progress("Scanning branches...")
@@ -260,6 +323,9 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
         if name == "HEAD":
             continue
         branch_names.add(name)
+
+    # Determine default branch (prefer "main" if it exists)
+    default_branch = _detect_default_branch(repo, branch_names)
 
     branches = [
         Branch(name=name, is_default=(name == default_branch))
@@ -275,42 +341,15 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
         tag_map.setdefault(sha, []).append(tag.name)
     _progress(f"Found {len(tag_map)} tagged commits", end="\n")
 
-    # Build branch membership: walk each branch and record commits
-    _progress("Building branch membership map...")
-    commit_to_branches: dict[str, set[str]] = {}
-    ref_count = 0
-    total_refs = len(list(repo.references))
-    t0 = time.monotonic()
-    last_progress_time = time.monotonic()
-
-    for ref in repo.references:
-        ref_count += 1
-        branch_name = ref.name
-        if branch_name.startswith("origin/"):
-            branch_name = branch_name[len("origin/"):]
-        if branch_name == "HEAD":
-            continue
-
-        for c in repo.iter_commits(ref):
-            commit_to_branches.setdefault(c.hexsha, set()).add(branch_name)
-
-        now = time.monotonic()
-        if (ref_count % 10 == 0 or ref_count == total_refs) and now - last_progress_time > 0.3:
-            elapsed = now - t0
-            _progress(
-                f"Branch map: {ref_count}/{total_refs} refs, "
-                f"{len(commit_to_branches)} commits [{elapsed:.0f}s]..."
-            )
-            last_progress_time = now
-
-    elapsed = time.monotonic() - t0
-    _progress(
-        f"Branch map: {len(commit_to_branches)} commits across {total_refs} refs [{elapsed:.1f}s]",
-        end="\n",
-    )
-
-    # Batch-collect numstat
-    numstat = _collect_numstat(repo_path)
+    # Run branch membership and numstat concurrently
+    # (GitPython subprocess calls release the GIL)
+    refs = list(repo.references)
+    cpu_count = os.cpu_count() or 1
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_membership = pool.submit(_build_branch_membership, repo, refs, cpu_count)
+        future_numstat = pool.submit(_collect_numstat, repo_path)
+        commit_to_branches = future_membership.result()
+        numstat = future_numstat.result()
 
     # Walk all commits
     _progress("Processing commits...")

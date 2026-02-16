@@ -77,21 +77,6 @@ fn fill_rect_alpha(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: C
     }
 }
 
-fn stroke_rect(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: Color, width: f32) {
-    let mut paint = Paint::default();
-    paint.set_color(color);
-    let stroke = Stroke { width, ..Stroke::default() };
-    let mut pb = PathBuilder::new();
-    pb.move_to(x, y);
-    pb.line_to(x + w, y);
-    pb.line_to(x + w, y + h);
-    pb.line_to(x, y + h);
-    pb.close();
-    if let Some(path) = pb.finish() {
-        pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-    }
-}
-
 fn draw_line(pixmap: &mut Pixmap, x1: f32, y1: f32, x2: f32, y2: f32, color: Color, width: f32) {
     let mut paint = Paint::default();
     paint.set_color(color);

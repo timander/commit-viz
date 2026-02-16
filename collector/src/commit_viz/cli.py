@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,18 +62,16 @@ def collect(config_path: str, output_path: str) -> None:
         data.merges = merges
         click.echo(f"  Found {len(commits)} commits, {len(branches)} branches, {len(merges)} merges [{time.monotonic() - t0:.2f}s]")
 
-        # Phase 2: Statistics
+        # Phase 2+3: Statistics and change flow (concurrent)
         t0 = time.monotonic()
-        click.echo("Computing statistics...")
-        data.statistics = compute_statistics(commits)
-        click.echo(f"  {data.statistics.unique_authors} authors, {data.statistics.commits_per_week} commits/week [{time.monotonic() - t0:.2f}s]")
-
-        # Phase 3: Change flow metrics
-        t0 = time.monotonic()
-        click.echo("Computing change flow metrics...")
-        data.statistics.change_flow = compute_change_flow(commits, merges, data.branches)
-        click.echo(f"  {data.statistics.change_flow.drought_count} drought periods, "
-                    f"{data.statistics.change_flow.branch_unmerged_count} unmerged branches [{time.monotonic() - t0:.2f}s]")
+        click.echo("Computing statistics + change flow metrics (concurrent)...")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            future_stats = pool.submit(compute_statistics, commits)
+            future_cf = pool.submit(compute_change_flow, commits, merges, data.branches)
+            data.statistics = future_stats.result()
+            data.statistics.change_flow = future_cf.result()
+        click.echo(f"  {data.statistics.unique_authors} authors, {data.statistics.commits_per_week} commits/week, "
+                    f"{data.statistics.change_flow.drought_count} droughts [{time.monotonic() - t0:.2f}s]")
 
     # Phase 4: Serialization
     t0 = time.monotonic()

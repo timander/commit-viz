@@ -13,7 +13,6 @@ pub struct DateRange {
 pub struct Metadata {
     pub repo: String,
     pub date_range: DateRange,
-    pub generated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,15 +24,10 @@ pub struct Branch {
 #[derive(Debug, Deserialize)]
 pub struct Commit {
     pub sha: String,
-    pub author: String,
     pub timestamp: DateTime<Utc>,
     pub branch: String,
-    pub message: String,
-    pub parents: Vec<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    pub conventional_type: Option<String>,
-    pub ticket_id: Option<String>,
     #[serde(default)]
     pub insertions: u32,
     #[serde(default)]
@@ -42,10 +36,6 @@ pub struct Commit {
     pub files_changed: u32,
     #[serde(default = "default_category")]
     pub category: String,
-    #[serde(default)]
-    pub is_merge_commit: bool,
-    #[serde(default)]
-    pub is_squash: bool,
 }
 
 fn default_category() -> String {
@@ -56,8 +46,6 @@ fn default_category() -> String {
 pub struct Merge {
     pub sha: String,
     pub from_branch: String,
-    pub to_branch: String,
-    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -87,8 +75,6 @@ pub struct CommitToReleaseDayEntry {
     #[serde(default)]
     pub avg_days_to_release: f64,
     #[serde(default)]
-    pub commit_count: u32,
-    #[serde(default)]
     pub unreleased_count: u32,
 }
 
@@ -104,8 +90,6 @@ pub struct BranchLifespan {
     pub lifespan_days: f64,
     #[serde(default)]
     pub merged: bool,
-    #[serde(default)]
-    pub commit_count: u32,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -131,8 +115,6 @@ pub struct DroughtPeriod {
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct CommitMergeLatencyEntry {
     #[serde(default)]
-    pub sha: String,
-    #[serde(default)]
     pub commit_date: String,
     pub days_to_merge: Option<f64>,
     #[serde(default)]
@@ -144,10 +126,6 @@ pub struct CommitMergeLatencyEntry {
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct ReleaseInterval {
     #[serde(default)]
-    pub tag: String,
-    #[serde(default)]
-    pub date: String,
-    #[serde(default)]
     pub days_since_previous: f64,
 }
 
@@ -155,10 +133,6 @@ pub struct ReleaseInterval {
 pub struct HistogramBin {
     #[serde(default)]
     pub label: String,
-    #[serde(default)]
-    pub min_val: f64,
-    #[serde(default)]
-    pub max_val: f64,
     #[serde(default)]
     pub count: u32,
 }
@@ -195,8 +169,6 @@ pub struct WorkDisposition {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct RollingAvgEntry {
-    #[serde(default)]
-    pub date: String,
     #[serde(default)]
     pub avg: f64,
 }
@@ -268,8 +240,6 @@ pub struct Statistics {
     #[serde(default)]
     pub by_category: std::collections::HashMap<String, u32>,
     #[serde(default)]
-    pub by_branch: std::collections::HashMap<String, u32>,
-    #[serde(default)]
     pub top_authors: Vec<AuthorEntry>,
     #[serde(default)]
     pub release_cycles: ReleaseCycleStats,
@@ -282,10 +252,6 @@ pub struct CollectedData {
     pub branches: Vec<Branch>,
     pub commits: Vec<Commit>,
     pub merges: Vec<Merge>,
-    #[serde(default)]
-    pub deployments: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub ci_runs: Vec<serde_json::Value>,
     pub statistics: Option<Statistics>,
 }
 

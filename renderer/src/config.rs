@@ -28,9 +28,9 @@ pub struct RenderConfig {
     #[arg(long)]
     pub duration_secs: Option<u32>,
 
-    /// Rendering style: network or timeline
-    #[arg(long, default_value = "network")]
-    pub style: String,
+    /// Use granular (commit-by-commit) rendering instead of optimized 30s mode
+    #[arg(long, default_value_t = false)]
+    pub granular: bool,
 
     /// Output path for statistics report PNG
     #[arg(long)]

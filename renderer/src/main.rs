@@ -5,7 +5,7 @@ mod render;
 mod report;
 mod stats;
 mod text;
-mod timeline;
+
 mod change_flow_charts;
 
 use clap::Parser;

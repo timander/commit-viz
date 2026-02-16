@@ -195,7 +195,7 @@ fn draw_catmull_rom_spline(
 
 // ── Legend ───────────────────────────────────────────────────────────────────
 
-fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, _width: u32, height: u32) {
+fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, height: u32) {
     let legend_y = height as f32 - 95.0;
     let dim = Color::from_rgba8(160, 160, 170, 255);
     let bright = Color::from_rgba8(230, 230, 240, 255);
@@ -601,7 +601,7 @@ fn render_frame(
     branch_labels: &[BranchLabel],
     date_ticks: &[DateTick],
     positioned_tags: &[PositionedTag],
-    _branch_infos: &[BranchVisualInfo],
+    branch_infos: &[BranchVisualInfo],
     frame_stats: Option<&FrameStats>,
     text_renderer: &TextRenderer,
     data: &CollectedData,
@@ -629,6 +629,58 @@ fn render_frame(
 
     // Branch labels
     draw_branch_labels(&mut pixmap, text_renderer, branch_labels, visible_x_limit);
+
+    // ── Draw phantom branch lines (always visible, even with no commits) ────
+    {
+        let visible_branches: std::collections::HashSet<&str> = visible
+            .iter()
+            .map(|pc| pc.commit.branch.as_str())
+            .collect();
+
+        for bi in branch_infos {
+            if visible_branches.contains(bi.name.as_str()) {
+                continue; // has commits — will be drawn by spline logic below
+            }
+
+            let bc = branch_color(bi.slot, bi.has_conflicts, bi.is_stale);
+            let mut paint = Paint::default();
+            paint.set_color(with_alpha(bc, 0.25));
+            paint.anti_alias = true;
+            let stroke = Stroke {
+                width: 1.0,
+                ..Stroke::default()
+            };
+
+            let x_end = if visible_x_limit > layout.margin_left {
+                visible_x_limit
+            } else {
+                layout.width as f32 - layout.margin_right
+            };
+
+            let mut pb = PathBuilder::new();
+            pb.move_to(layout.margin_left, bi.base_y);
+            pb.line_to(x_end, bi.base_y);
+            if let Some(path) = pb.finish() {
+                pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+            }
+
+            // Branch label
+            let display_name = if bi.name.len() > 24 {
+                format!("{}...", &bi.name[..21])
+            } else {
+                bi.name.clone()
+            };
+            let label_color = with_alpha(bc, 0.6);
+            text_renderer.draw_text(
+                &mut pixmap,
+                &display_name,
+                layout.margin_left + 10.0,
+                bi.base_y - 14.0,
+                10.0,
+                label_color,
+            );
+        }
+    }
 
     // ── Draw branch splines (Catmull-Rom through branch commit positions) ───
 
@@ -811,7 +863,7 @@ fn render_frame(
     }
 
     // Legend
-    draw_legend(&mut pixmap, text_renderer, width, height);
+    draw_legend(&mut pixmap, text_renderer, height);
 
     pixmap
 }
@@ -828,7 +880,6 @@ pub fn render_video(
     let branch_labels = layout.compute_branch_labels(&positioned_commits);
     let date_ticks = layout.compute_date_ticks(data);
     let positioned_tags = layout.position_tags(&positioned_commits);
-    let text_renderer = TextRenderer::new();
 
     let num_commits = data.commits.len();
     if num_commits == 0 {
@@ -839,14 +890,23 @@ pub fn render_video(
     let frame_stats = precompute_frame_stats(data, &layout.default_branch);
 
     let duration_secs = config.duration_secs.unwrap_or_else(|| {
-        ((num_commits as f32 / 10.0).ceil() as u32).max(5)
+        if config.granular {
+            ((num_commits as f32 / 10.0).ceil() as u32).max(5)
+        } else {
+            30 // Optimized mode: fixed 30 seconds
+        }
     });
     let total_frames = duration_secs * config.fps;
 
+    let mode_label = if config.granular { "granular" } else { "optimized" };
     eprintln!(
-        "Rendering {} commits over {} frames ({} seconds at {} fps)...",
-        num_commits, total_frames, duration_secs, config.fps
+        "Rendering {} commits over {} frames ({} seconds at {} fps, {} mode)...",
+        num_commits, total_frames, duration_secs, config.fps, mode_label
     );
+
+    // For optimized mode, precompute time bounds for timestamp-based frame mapping
+    let t_start = data.commits.first().map(|c| c.timestamp);
+    let t_end = data.commits.last().map(|c| c.timestamp);
 
     let output_path = config.output.to_str().unwrap_or("output.mp4");
 
@@ -889,9 +949,18 @@ pub fn render_video(
         let frames: Vec<Pixmap> = indices
             .par_iter()
             .map(|&idx| {
-                let progress = (idx + 1) as f32 / total_frames as f32;
-                let visible_count =
-                    ((progress * num_commits as f32).ceil() as usize).min(num_commits);
+                let visible_count = if config.granular {
+                    let progress = (idx + 1) as f32 / total_frames as f32;
+                    ((progress * num_commits as f32).ceil() as usize).min(num_commits)
+                } else if let (Some(ts), Some(te)) = (t_start, t_end) {
+                    // Optimized mode: time-distributed via binary search
+                    let total_duration = (te - ts).num_seconds().max(1) as f64;
+                    let frame_ratio = idx as f64 / (total_frames - 1).max(1) as f64;
+                    let t_frame = ts + chrono::Duration::seconds((frame_ratio * total_duration) as i64);
+                    data.commits.partition_point(|c| c.timestamp <= t_frame).max(1)
+                } else {
+                    num_commits
+                };
                 let tr = TextRenderer::new();
 
                 // Get the frame stats for this visible_count (1-indexed to 0-indexed)

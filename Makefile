@@ -44,7 +44,6 @@ rerun:
 	renderer/target/release/commit-viz-renderer \
 		--input "analysis/$(SLUG)/output.json" \
 		--output "analysis/$(SLUG)/$(SLUG).mp4" \
-		--style network \
 		--report-output "analysis/$(SLUG)/report.png" \
 		--change-flow-dir "analysis/$(SLUG)/change-flow"
 
@@ -57,7 +56,6 @@ change-flow:
 	renderer/target/release/commit-viz-renderer \
 		--input "analysis/$(SLUG)/output.json" \
 		--output "/dev/null" \
-		--style network \
 		--change-flow-dir "analysis/$(SLUG)/change-flow"
 
 build-renderer:

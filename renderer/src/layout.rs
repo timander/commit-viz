@@ -7,7 +7,6 @@ pub struct PositionedCommit<'a> {
     pub x: f32,
     pub y: f32,
     pub slot: usize,
-    pub radius: f32,
     pub rect_w: f32,
     pub rect_h: f32,
     pub is_default_branch: bool,
@@ -21,7 +20,6 @@ pub struct PositionedMerge {
     pub to_x: f32,
     pub to_y: f32,
     pub slot: usize,
-    pub from_branch: String,
     pub has_conflicts: bool,
     pub is_stale: bool,
 }
@@ -52,16 +50,13 @@ pub struct BranchVisualInfo {
     pub slot: usize,
     pub has_conflicts: bool,
     pub is_stale: bool,
-    pub merged: bool,
+    pub base_y: f32,
 }
 
 pub struct NetworkLayout {
     pub width: u32,
-    pub height: u32,
     pub margin_left: f32,
     pub margin_right: f32,
-    pub margin_top: f32,
-    pub margin_bottom: f32,
     pub main_y: f32,
     pub min_branch_spacing: f32,
     pub max_divergence_offset: f32,
@@ -72,8 +67,6 @@ const MIN_RECT_W: f32 = 4.0;
 const MAX_RECT_W: f32 = 20.0;
 const MIN_RECT_H: f32 = 4.0;
 const MAX_RECT_H: f32 = 24.0;
-const MIN_RADIUS: f32 = 3.0;
-const MAX_RADIUS: f32 = 12.0;
 const MIN_BRANCH_SPACING: f32 = 35.0;
 const MAX_DIVERGENCE_OFFSET: f32 = 250.0;
 
@@ -85,7 +78,6 @@ struct BranchDivergenceState {
     cum_files: u32,
     has_conflicts: bool,
     is_stale: bool,
-    merged: bool,
     last_commit_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -109,11 +101,8 @@ impl NetworkLayout {
 
         NetworkLayout {
             width,
-            height,
             margin_left,
             margin_right,
-            margin_top,
-            margin_bottom,
             main_y,
             min_branch_spacing: MIN_BRANCH_SPACING,
             max_divergence_offset: MAX_DIVERGENCE_OFFSET,
@@ -127,15 +116,6 @@ impl NetworkLayout {
             return self.margin_left + usable / 2.0;
         }
         self.margin_left + (index as f32 / (total - 1) as f32) * usable
-    }
-
-    fn commit_radius(commit: &Commit) -> f32 {
-        let changes = (commit.insertions + commit.deletions) as f32;
-        if changes <= 0.0 {
-            return MIN_RADIUS;
-        }
-        let scaled = (changes.ln() / 10.0_f32.ln()) * (MAX_RADIUS - MIN_RADIUS) + MIN_RADIUS;
-        scaled.clamp(MIN_RADIUS, MAX_RADIUS)
     }
 
     fn commit_rect(commit: &Commit) -> (f32, f32) {
@@ -170,7 +150,6 @@ impl NetworkLayout {
     ) -> (Vec<PositionedCommit<'a>>, Vec<BranchVisualInfo>) {
         let total = data.commits.len();
         let mut branch_states: HashMap<String, BranchDivergenceState> = HashMap::new();
-        let mut next_slot: usize = 0;
         let mut result = Vec::with_capacity(total);
 
         // Build merge set to detect which branches get merged
@@ -217,6 +196,38 @@ impl NetworkLayout {
             std::collections::HashSet::new()
         };
 
+        // Pre-assign slots to ALL non-default branches upfront
+        let mut non_default_branches: Vec<&str> = data
+            .branches
+            .iter()
+            .filter(|b| b.name != self.default_branch)
+            .map(|b| b.name.as_str())
+            .collect();
+        non_default_branches.sort();
+
+        let branch_slot_map: HashMap<&str, usize> = non_default_branches
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (*name, i))
+            .collect();
+
+        // Initialize branch_states for all non-default branches
+        for (i, name) in non_default_branches.iter().enumerate() {
+            branch_states.insert(
+                name.to_string(),
+                BranchDivergenceState {
+                    slot: i,
+                    cum_commits: 0,
+                    cum_lines: 0,
+                    cum_files: 0,
+                    has_conflicts: conflict_branches.contains(*name),
+                    is_stale: stale_branches.contains(*name),
+
+                    last_commit_timestamp: None,
+                },
+            );
+        }
+
         for (i, commit) in data.commits.iter().enumerate() {
             let x = self.commit_to_x(i, total);
             let is_default = commit.branch == self.default_branch;
@@ -224,11 +235,10 @@ impl NetworkLayout {
             let (y, slot, has_conflicts, is_stale) = if is_default {
                 (self.main_y, 0, false, false)
             } else {
+                let slot = branch_slot_map.get(commit.branch.as_str()).copied().unwrap_or(0);
                 let state = branch_states
                     .entry(commit.branch.clone())
                     .or_insert_with(|| {
-                        let slot = next_slot;
-                        next_slot += 1;
                         BranchDivergenceState {
                             slot,
                             cum_commits: 0,
@@ -236,7 +246,7 @@ impl NetworkLayout {
                             cum_files: 0,
                             has_conflicts: conflict_branches.contains(&commit.branch),
                             is_stale: stale_branches.contains(&commit.branch),
-                            merged: merge_from_branches.contains(commit.branch.as_str()),
+
                             last_commit_timestamp: None,
                         }
                     });
@@ -250,7 +260,6 @@ impl NetworkLayout {
                 (y, state.slot, state.has_conflicts, state.is_stale)
             };
 
-            let radius = Self::commit_radius(commit);
             let (rect_w, rect_h) = Self::commit_rect(commit);
 
             result.push(PositionedCommit {
@@ -258,7 +267,6 @@ impl NetworkLayout {
                 x,
                 y,
                 slot,
-                radius,
                 rect_w,
                 rect_h,
                 is_default_branch: is_default,
@@ -267,15 +275,18 @@ impl NetworkLayout {
             });
         }
 
-        // Build branch visual info
+        // Build branch visual info with base_y for phantom rendering
         let branch_infos: Vec<BranchVisualInfo> = branch_states
             .into_iter()
-            .map(|(name, state)| BranchVisualInfo {
-                name,
-                slot: state.slot,
-                has_conflicts: state.has_conflicts,
-                is_stale: state.is_stale,
-                merged: state.merged,
+            .map(|(name, state)| {
+                let base_y = self.main_y + (state.slot as f32 + 1.0) * self.min_branch_spacing;
+                BranchVisualInfo {
+                    name,
+                    slot: state.slot,
+                    has_conflicts: state.has_conflicts,
+                    is_stale: state.is_stale,
+                    base_y,
+                }
             })
             .collect();
 
@@ -315,7 +326,6 @@ impl NetworkLayout {
                     to_x: merge_pc.x,
                     to_y: merge_pc.y,
                     slot: from_pc.slot,
-                    from_branch: m.from_branch.clone(),
                     has_conflicts: from_pc.branch_has_conflicts,
                     is_stale: from_pc.branch_is_stale,
                 })

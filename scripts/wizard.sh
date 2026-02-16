@@ -246,7 +246,6 @@ fi
 
 echo "Running renderer..."
 $RENDERER --input "$OUTPUT_JSON" --output "$ANALYSIS_SLUG_DIR/$SLUG.mp4" \
-    --style network \
     --report-output "$ANALYSIS_SLUG_DIR/report.png" \
     --change-flow-dir "$ANALYSIS_SLUG_DIR/change-flow" \
     $DURATION_FLAG
