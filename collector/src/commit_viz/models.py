@@ -24,6 +24,8 @@ class Commit:
     deletions: int = 0
     files_changed: int = 0
     category: str = "other"
+    is_merge_commit: bool = False
+    is_squash: bool = False
 
 
 @dataclass

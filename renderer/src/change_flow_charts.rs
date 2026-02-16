@@ -29,6 +29,9 @@ fn category_color(category: &str) -> Color {
         "docs" => Color::from_rgba8(129, 199, 132, 255),
         "ci" => Color::from_rgba8(77, 208, 225, 255),
         "test" => Color::from_rgba8(255, 167, 38, 255),
+        "merge" => Color::from_rgba8(255, 200, 60, 200),
+        "squash" => Color::from_rgba8(255, 183, 77, 255),
+        "conflict" => Color::from_rgba8(244, 67, 54, 255),
         _ => Color::from_rgba8(158, 158, 158, 255),
     }
 }

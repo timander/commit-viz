@@ -1,4 +1,28 @@
-.PHONY: analyze rerun change-flow build-renderer build-collector doctor
+.PHONY: help analyze rerun change-flow build-renderer build-collector doctor
+.DEFAULT_GOAL := help
+
+# Show all available commands
+help:
+	@echo "commit-viz — git collaboration visualizer"
+	@echo ""
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "Setup:"
+	@echo "  doctor           Run environment health check (versions, tools, env vars)"
+	@echo "  build-collector   Install Python collector dependencies (uv sync)"
+	@echo "  build-renderer    Build Rust renderer binary (cargo build --release)"
+	@echo ""
+	@echo "Analysis:"
+	@echo "  analyze           Interactive wizard — new repo or rerun existing"
+	@echo "  rerun SLUG=<name> Re-run full pipeline on existing project"
+	@echo "  change-flow SLUG=<name>"
+	@echo "                    Regenerate change-flow charts only (no video)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make doctor                  # verify all tools are installed"
+	@echo "  make analyze                 # launch interactive wizard"
+	@echo "  make rerun SLUG=slf4j        # re-collect and re-render slf4j"
+	@echo "  make change-flow SLUG=flask  # regenerate flask charts only"
 
 # Environment health check — run first to verify all dependencies
 doctor:

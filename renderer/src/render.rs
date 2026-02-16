@@ -24,6 +24,9 @@ fn category_color(category: &str) -> Color {
         "docs" => Color::from_rgba8(129, 199, 132, 255),     // soft green
         "ci" => Color::from_rgba8(77, 208, 225, 255),        // cyan
         "test" => Color::from_rgba8(255, 167, 38, 255),      // amber
+        "merge" => Color::from_rgba8(255, 200, 60, 200),     // sacred gold (dim)
+        "squash" => Color::from_rgba8(255, 183, 77, 255),    // orange
+        "conflict" => Color::from_rgba8(244, 67, 54, 255),   // bright red
         _ => Color::from_rgba8(158, 158, 158, 255),          // gray
     }
 }
@@ -100,7 +103,8 @@ fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, _width: u32, h
     let categories = [
         ("feature", "feature"), ("bugfix", "bugfix"), ("release", "release"),
         ("refactor", "refactor"), ("docs", "docs"), ("ci", "ci"),
-        ("test", "test"), ("other", "other"),
+        ("test", "test"), ("merge", "merge"), ("squash", "squash"),
+        ("conflict", "conflict"), ("other", "other"),
     ];
 
     let mut x = 20.0;

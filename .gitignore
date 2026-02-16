@@ -31,3 +31,4 @@ output*.json
 
 # Analysis repos (cloned repos inside analysis folders)
 analysis/*/repo/
+.claude/

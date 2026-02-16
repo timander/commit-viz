@@ -12,6 +12,9 @@ fn category_color(category: &str) -> Color {
         "docs" => Color::from_rgba8(129, 199, 132, 255),
         "ci" => Color::from_rgba8(77, 208, 225, 255),
         "test" => Color::from_rgba8(255, 167, 38, 255),
+        "merge" => Color::from_rgba8(255, 200, 60, 200),
+        "squash" => Color::from_rgba8(255, 183, 77, 255),
+        "conflict" => Color::from_rgba8(244, 67, 54, 255),
         _ => Color::from_rgba8(158, 158, 158, 255),
     }
 }
@@ -62,7 +65,8 @@ pub fn render_report(
     text.draw_text(&mut pixmap, "Commits by Category", 40.0, 210.0, 20.0, white);
 
     let categories_ordered = [
-        "feature", "bugfix", "release", "refactor", "docs", "ci", "test", "other",
+        "feature", "bugfix", "release", "refactor", "docs", "ci", "test",
+        "merge", "squash", "conflict", "other",
     ];
     let max_count = categories_ordered
         .iter()

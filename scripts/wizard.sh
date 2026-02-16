@@ -81,10 +81,17 @@ parse_repo_input() {
         REPO_PATH_CONFIG="repo"
 
     else
-        # Local path
-        SLUG=$(basename "$input")
+        # Local path — resolve to absolute then store relative to project root
+        local abs_path
+        abs_path="$(cd "$input" 2>/dev/null && pwd || echo "$input")"
+        SLUG=$(basename "$abs_path")
         REPO_URL=""
-        REPO_PATH_CONFIG="$input"
+        # Store as relative path from project root if possible
+        if [[ "$abs_path" == "$PROJECT_ROOT"* ]]; then
+            REPO_PATH_CONFIG=".${abs_path#$PROJECT_ROOT}"
+        else
+            REPO_PATH_CONFIG="$abs_path"
+        fi
     fi
 }
 

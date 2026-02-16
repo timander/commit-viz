@@ -42,6 +42,10 @@ pub struct Commit {
     pub files_changed: u32,
     #[serde(default = "default_category")]
     pub category: String,
+    #[serde(default)]
+    pub is_merge_commit: bool,
+    #[serde(default)]
+    pub is_squash: bool,
 }
 
 fn default_category() -> String {
