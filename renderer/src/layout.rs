@@ -6,14 +6,13 @@ pub struct PositionedCommit<'a> {
     pub commit: &'a Commit,
     pub x: f32,
     pub y: f32,
-    pub lane: usize,
+    pub slot: usize,
     pub radius: f32,
-    /// Width of the commit rectangle (proportional to files_changed)
     pub rect_w: f32,
-    /// Height of the commit rectangle (proportional to lines changed)
     pub rect_h: f32,
-    /// Whether this is on the default (sacred timeline) branch
     pub is_default_branch: bool,
+    pub branch_has_conflicts: bool,
+    pub branch_is_stale: bool,
 }
 
 pub struct PositionedMerge {
@@ -21,8 +20,10 @@ pub struct PositionedMerge {
     pub from_y: f32,
     pub to_x: f32,
     pub to_y: f32,
-    pub lane: usize,
+    pub slot: usize,
     pub from_branch: String,
+    pub has_conflicts: bool,
+    pub is_stale: bool,
 }
 
 pub struct DateTick {
@@ -30,12 +31,28 @@ pub struct DateTick {
     pub label: String,
 }
 
-/// Tracks when a branch first appears and where it should be labeled
 pub struct BranchLabel {
     pub name: String,
     pub x: f32,
     pub y: f32,
-    pub lane: usize,
+    pub slot: usize,
+    pub has_conflicts: bool,
+    pub is_stale: bool,
+}
+
+pub struct PositionedTag {
+    pub x: f32,
+    pub main_y: f32,
+    pub label_y: f32,
+    pub tag_name: String,
+}
+
+pub struct BranchVisualInfo {
+    pub name: String,
+    pub slot: usize,
+    pub has_conflicts: bool,
+    pub is_stale: bool,
+    pub merged: bool,
 }
 
 pub struct NetworkLayout {
@@ -45,10 +62,10 @@ pub struct NetworkLayout {
     pub margin_right: f32,
     pub margin_top: f32,
     pub margin_bottom: f32,
-    pub lane_height: f32,
-    pub branch_lanes: HashMap<String, usize>,
+    pub main_y: f32,
+    pub min_branch_spacing: f32,
+    pub max_divergence_offset: f32,
     pub default_branch: String,
-    pub total_lanes: usize,
 }
 
 const MIN_RECT_W: f32 = 4.0;
@@ -57,6 +74,20 @@ const MIN_RECT_H: f32 = 4.0;
 const MAX_RECT_H: f32 = 24.0;
 const MIN_RADIUS: f32 = 3.0;
 const MAX_RADIUS: f32 = 12.0;
+const MIN_BRANCH_SPACING: f32 = 35.0;
+const MAX_DIVERGENCE_OFFSET: f32 = 250.0;
+
+/// Tracks cumulative divergence stats per branch during positioning.
+struct BranchDivergenceState {
+    slot: usize,
+    cum_commits: u32,
+    cum_lines: u64,
+    cum_files: u32,
+    has_conflicts: bool,
+    is_stale: bool,
+    merged: bool,
+    last_commit_timestamp: Option<chrono::DateTime<chrono::Utc>>,
+}
 
 impl NetworkLayout {
     pub fn from_data(data: &CollectedData, width: u32, height: u32) -> Self {
@@ -65,7 +96,6 @@ impl NetworkLayout {
         let margin_left = 80.0;
         let margin_right = 40.0;
 
-        // Find default branch
         let default_branch = data
             .branches
             .iter()
@@ -73,58 +103,9 @@ impl NetworkLayout {
             .map(|b| b.name.clone())
             .unwrap_or_else(|| "main".to_string());
 
-        // Assign lanes only to branches that have commits
-        let mut branch_commit_counts: HashMap<String, usize> = HashMap::new();
-        for c in &data.commits {
-            *branch_commit_counts.entry(c.branch.clone()).or_insert(0) += 1;
-        }
-
-        // Default branch centered, others distributed above/below
-        let mut active_branches: Vec<String> = branch_commit_counts
-            .keys()
-            .filter(|b| *b != &default_branch)
-            .cloned()
-            .collect();
-        active_branches.sort();
-
-        // Limit lanes to avoid overcrowding
-        let max_visible = ((height as f32 - margin_top - margin_bottom) / 40.0) as usize;
-        if active_branches.len() > max_visible.saturating_sub(1) {
-            active_branches.sort_by(|a, b| {
-                branch_commit_counts
-                    .get(b)
-                    .unwrap_or(&0)
-                    .cmp(branch_commit_counts.get(a).unwrap_or(&0))
-            });
-            active_branches.truncate(max_visible.saturating_sub(1));
-            active_branches.sort();
-        }
-
-        let total_lanes = active_branches.len() + 1;
         let usable_height = height as f32 - margin_top - margin_bottom;
-        let lane_height = (usable_height / total_lanes as f32).min(60.0);
-
-        // Center default branch, distribute others above/below
-        let mut branch_lanes: HashMap<String, usize> = HashMap::new();
-        let center = total_lanes / 2;
-        branch_lanes.insert(default_branch.clone(), center);
-
-        let mut above = (0..center).rev().collect::<Vec<_>>();
-        let mut below = ((center + 1)..total_lanes).collect::<Vec<_>>();
-
-        for (i, branch) in active_branches.iter().enumerate() {
-            if i % 2 == 0 {
-                if let Some(lane) = above.pop() {
-                    branch_lanes.insert(branch.clone(), lane);
-                } else if let Some(lane) = below.pop() {
-                    branch_lanes.insert(branch.clone(), lane);
-                }
-            } else if let Some(lane) = below.pop() {
-                branch_lanes.insert(branch.clone(), lane);
-            } else if let Some(lane) = above.pop() {
-                branch_lanes.insert(branch.clone(), lane);
-            }
-        }
+        // Main at ~15% down from top of usable area, leaving room above for tags
+        let main_y = margin_top + usable_height * 0.15;
 
         NetworkLayout {
             width,
@@ -133,10 +114,10 @@ impl NetworkLayout {
             margin_right,
             margin_top,
             margin_bottom,
-            lane_height,
-            branch_lanes,
+            main_y,
+            min_branch_spacing: MIN_BRANCH_SPACING,
+            max_divergence_offset: MAX_DIVERGENCE_OFFSET,
             default_branch,
-            total_lanes,
         }
     }
 
@@ -148,17 +129,6 @@ impl NetworkLayout {
         self.margin_left + (index as f32 / (total - 1) as f32) * usable
     }
 
-    fn branch_to_y(&self, branch: &str) -> (f32, usize) {
-        let lane = self
-            .branch_lanes
-            .get(branch)
-            .copied()
-            .unwrap_or(self.total_lanes);
-
-        let y = self.margin_top + (lane as f32 + 0.5) * self.lane_height;
-        (y, lane)
-    }
-
     fn commit_radius(commit: &Commit) -> f32 {
         let changes = (commit.insertions + commit.deletions) as f32;
         if changes <= 0.0 {
@@ -168,9 +138,6 @@ impl NetworkLayout {
         scaled.clamp(MIN_RADIUS, MAX_RADIUS)
     }
 
-    /// Compute rectangular dimensions for a commit.
-    /// Width proportional to files_changed (log scale).
-    /// Height proportional to lines changed (log scale).
     fn commit_rect(commit: &Commit) -> (f32, f32) {
         let files = commit.files_changed.max(1) as f32;
         let lines = (commit.insertions + commit.deletions).max(1) as f32;
@@ -178,65 +145,212 @@ impl NetworkLayout {
         let w = (files.ln() / 10.0_f32.ln()) * (MAX_RECT_W - MIN_RECT_W) + MIN_RECT_W;
         let h = (lines.ln() / 10.0_f32.ln()) * (MAX_RECT_H - MIN_RECT_H) + MIN_RECT_H;
 
-        (w.clamp(MIN_RECT_W, MAX_RECT_W), h.clamp(MIN_RECT_H, MAX_RECT_H))
+        (
+            w.clamp(MIN_RECT_W, MAX_RECT_W),
+            h.clamp(MIN_RECT_H, MAX_RECT_H),
+        )
     }
 
-    pub fn position_commits<'a>(&self, data: &'a CollectedData) -> Vec<PositionedCommit<'a>> {
+    /// Compute dynamic Y for a branch commit based on cumulative divergence.
+    fn divergence_y(&self, state: &BranchDivergenceState) -> f32 {
+        let base_offset = (state.slot as f32 + 1.0) * self.min_branch_spacing;
+        let divergence = (1.0 + state.cum_commits as f64).log2() as f32 * 15.0
+            + (1.0 + state.cum_lines as f64).log2() as f32 * 8.0
+            + (1.0 + state.cum_files as f64).log2() as f32 * 5.0;
+        let clamped = divergence.min(self.max_divergence_offset);
+        // Branches go BELOW main
+        self.main_y + base_offset + clamped
+    }
+
+    /// Walk commits chronologically, assign slots on first appearance,
+    /// compute dynamic Y per commit based on cumulative branch divergence.
+    pub fn position_commits_dynamic<'a>(
+        &self,
+        data: &'a CollectedData,
+    ) -> (Vec<PositionedCommit<'a>>, Vec<BranchVisualInfo>) {
         let total = data.commits.len();
-        data.commits
-            .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                let x = self.commit_to_x(i, total);
-                let (y, lane) = self.branch_to_y(&c.branch);
-                let radius = Self::commit_radius(c);
-                let (rect_w, rect_h) = Self::commit_rect(c);
-                let is_default_branch = c.branch == self.default_branch;
-                PositionedCommit {
-                    commit: c,
-                    x,
-                    y,
-                    lane,
-                    radius,
-                    rect_w,
-                    rect_h,
-                    is_default_branch,
-                }
-            })
-            .collect()
-    }
+        let mut branch_states: HashMap<String, BranchDivergenceState> = HashMap::new();
+        let mut next_slot: usize = 0;
+        let mut result = Vec::with_capacity(total);
 
-    pub fn position_merges(&self, data: &CollectedData) -> Vec<PositionedMerge> {
-        let sha_to_idx: HashMap<&str, usize> = data
-            .commits
+        // Build merge set to detect which branches get merged
+        let merge_from_branches: std::collections::HashSet<&str> = data
+            .merges
             .iter()
-            .enumerate()
-            .map(|(i, c)| (c.sha.as_str(), i))
+            .map(|m| m.from_branch.as_str())
             .collect();
 
-        let total = data.commits.len();
+        // Detect conflict branches: any branch that has a commit with category "conflict"
+        let mut conflict_branches: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        for c in &data.commits {
+            if c.category == "conflict" {
+                conflict_branches.insert(c.branch.clone());
+            }
+        }
 
+        // First pass: detect stale branches (unmerged, last commit > 30 days before repo end)
+        let repo_end = data.commits.last().map(|c| c.timestamp);
+        let mut branch_last_commit: HashMap<String, chrono::DateTime<chrono::Utc>> = HashMap::new();
+        for c in &data.commits {
+            branch_last_commit
+                .entry(c.branch.clone())
+                .and_modify(|t| {
+                    if c.timestamp > *t {
+                        *t = c.timestamp;
+                    }
+                })
+                .or_insert(c.timestamp);
+        }
+
+        let stale_branches: std::collections::HashSet<String> = if let Some(end) = repo_end {
+            branch_last_commit
+                .iter()
+                .filter(|(name, last)| {
+                    *name != &self.default_branch
+                        && !merge_from_branches.contains(name.as_str())
+                        && (end - **last).num_days() > 30
+                })
+                .map(|(name, _)| name.clone())
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
+        for (i, commit) in data.commits.iter().enumerate() {
+            let x = self.commit_to_x(i, total);
+            let is_default = commit.branch == self.default_branch;
+
+            let (y, slot, has_conflicts, is_stale) = if is_default {
+                (self.main_y, 0, false, false)
+            } else {
+                let state = branch_states
+                    .entry(commit.branch.clone())
+                    .or_insert_with(|| {
+                        let slot = next_slot;
+                        next_slot += 1;
+                        BranchDivergenceState {
+                            slot,
+                            cum_commits: 0,
+                            cum_lines: 0,
+                            cum_files: 0,
+                            has_conflicts: conflict_branches.contains(&commit.branch),
+                            is_stale: stale_branches.contains(&commit.branch),
+                            merged: merge_from_branches.contains(commit.branch.as_str()),
+                            last_commit_timestamp: None,
+                        }
+                    });
+
+                state.cum_commits += 1;
+                state.cum_lines += (commit.insertions + commit.deletions) as u64;
+                state.cum_files += commit.files_changed;
+                state.last_commit_timestamp = Some(commit.timestamp);
+
+                let y = self.divergence_y(state);
+                (y, state.slot, state.has_conflicts, state.is_stale)
+            };
+
+            let radius = Self::commit_radius(commit);
+            let (rect_w, rect_h) = Self::commit_rect(commit);
+
+            result.push(PositionedCommit {
+                commit,
+                x,
+                y,
+                slot,
+                radius,
+                rect_w,
+                rect_h,
+                is_default_branch: is_default,
+                branch_has_conflicts: has_conflicts,
+                branch_is_stale: is_stale,
+            });
+        }
+
+        // Build branch visual info
+        let branch_infos: Vec<BranchVisualInfo> = branch_states
+            .into_iter()
+            .map(|(name, state)| BranchVisualInfo {
+                name,
+                slot: state.slot,
+                has_conflicts: state.has_conflicts,
+                is_stale: state.is_stale,
+                merged: state.merged,
+            })
+            .collect();
+
+        (result, branch_infos)
+    }
+
+    /// Look up merge positions from positioned commits (not fixed lanes).
+    pub fn position_merges_dynamic(
+        &self,
+        data: &CollectedData,
+        positioned_commits: &[PositionedCommit],
+    ) -> Vec<PositionedMerge> {
+        // Build sha -> index into positioned_commits
+        let sha_to_idx: HashMap<&str, usize> = positioned_commits
+            .iter()
+            .enumerate()
+            .map(|(i, pc)| (pc.commit.sha.as_str(), i))
+            .collect();
+
+        // For each merge, find the last commit on from_branch before the merge commit,
+        // and the merge commit itself.
         data.merges
             .iter()
             .filter_map(|m| {
-                let idx = sha_to_idx.get(m.sha.as_str())?;
-                let x = self.commit_to_x(*idx, total);
-                let (from_y, lane) = self.branch_to_y(&m.from_branch);
-                let (to_y, _) = self.branch_to_y(&m.to_branch);
+                let merge_idx = sha_to_idx.get(m.sha.as_str())?;
+                let merge_pc = &positioned_commits[*merge_idx];
+
+                // Find the last commit on from_branch that appears before this merge
+                let from_pc = positioned_commits[..*merge_idx]
+                    .iter()
+                    .rev()
+                    .find(|pc| pc.commit.branch == m.from_branch)?;
+
                 Some(PositionedMerge {
-                    from_x: x - 20.0,
-                    from_y,
-                    to_x: x,
-                    to_y,
-                    lane,
+                    from_x: from_pc.x,
+                    from_y: from_pc.y,
+                    to_x: merge_pc.x,
+                    to_y: merge_pc.y,
+                    slot: from_pc.slot,
                     from_branch: m.from_branch.clone(),
+                    has_conflicts: from_pc.branch_has_conflicts,
+                    is_stale: from_pc.branch_is_stale,
                 })
             })
             .collect()
     }
 
-    /// Compute branch labels: the first commit position for each non-default branch
-    pub fn compute_branch_labels<'a>(&self, positioned: &[PositionedCommit<'a>]) -> Vec<BranchLabel> {
+    /// Create vertical markers for tagged default-branch commits.
+    pub fn position_tags(&self, positioned_commits: &[PositionedCommit]) -> Vec<PositionedTag> {
+        positioned_commits
+            .iter()
+            .filter(|pc| pc.is_default_branch && !pc.commit.tags.is_empty())
+            .flat_map(|pc| {
+                pc.commit.tags.iter().map(move |tag| {
+                    let display = if tag.len() > 16 {
+                        format!("{}...", &tag[..13])
+                    } else {
+                        tag.clone()
+                    };
+                    PositionedTag {
+                        x: pc.x,
+                        main_y: self.main_y,
+                        label_y: self.main_y - 50.0,
+                        tag_name: display,
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Compute branch labels: the first commit position for each non-default branch.
+    pub fn compute_branch_labels<'a>(
+        &self,
+        positioned: &[PositionedCommit<'a>],
+    ) -> Vec<BranchLabel> {
         let mut seen: HashMap<String, bool> = HashMap::new();
         let mut labels = Vec::new();
 
@@ -248,11 +362,20 @@ impl NetworkLayout {
                 continue;
             }
             seen.insert(pc.commit.branch.clone(), true);
+
+            let display_name = if pc.commit.branch.len() > 24 {
+                format!("{}...", &pc.commit.branch[..21])
+            } else {
+                pc.commit.branch.clone()
+            };
+
             labels.push(BranchLabel {
-                name: pc.commit.branch.clone(),
+                name: display_name,
                 x: pc.x,
                 y: pc.y,
-                lane: pc.lane,
+                slot: pc.slot,
+                has_conflicts: pc.branch_has_conflicts,
+                is_stale: pc.branch_is_stale,
             });
         }
 
