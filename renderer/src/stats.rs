@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 /// Rolling "code inventory" metrics for the stats overlay, one per visible_count.
 #[derive(Clone, Debug, Default)]
 pub struct FrameStats {
+    pub total_branches: u32,
     pub unmerged_commits: u32,
     pub active_branches: u32,
     pub stale_branches: u32,
@@ -144,7 +145,10 @@ pub fn precompute_frame_stats(data: &CollectedData, default_branch: &str) -> Vec
         let cutoff = now - chrono::Duration::days(30);
         let merge_throughput = merge_times.iter().filter(|&&t| t >= cutoff).count() as u32;
 
+        let total_branches = branch_states.len() as u32;
+
         results.push(FrameStats {
+            total_branches,
             unmerged_commits,
             active_branches,
             stale_branches,

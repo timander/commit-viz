@@ -19,6 +19,8 @@ pub struct Metadata {
 pub struct Branch {
     pub name: String,
     pub is_default: bool,
+    #[serde(default)]
+    pub parent_branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

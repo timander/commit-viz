@@ -446,4 +446,58 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     commits.sort(key=lambda c: c.timestamp)
     merges.sort(key=lambda m: m.timestamp)
 
+    # Compute parent_branch for each branch by walking commit ancestry.
+    # The first commit on a branch has a parent that belongs to a different branch;
+    # that different branch is the parent.
+    _progress("Computing parent branches...")
+    sha_to_branch: dict[str, str] = {}
+    for c in commits:
+        sha_to_branch[c.sha] = c.branch
+
+    sha_to_parents: dict[str, list[str]] = {}
+    for c in commits:
+        sha_to_parents[c.sha] = c.parents
+
+    # Find first commit per branch (commits are sorted by timestamp)
+    first_commit_by_branch: dict[str, Commit] = {}
+    for c in commits:
+        if c.branch not in first_commit_by_branch:
+            first_commit_by_branch[c.branch] = c
+
+    branch_parent_map: dict[str, str] = {}
+    for b in branches:
+        if b.is_default:
+            continue
+        first = first_commit_by_branch.get(b.name)
+        if first is None:
+            branch_parent_map[b.name] = default_branch
+            continue
+
+        # Walk up parent chain until we find a commit on a different branch
+        found = False
+        visited: set[str] = set()
+        queue = list(first.parents)
+        while queue:
+            parent_sha = queue.pop(0)
+            if parent_sha in visited:
+                continue
+            visited.add(parent_sha)
+            parent_branch = sha_to_branch.get(parent_sha)
+            if parent_branch is not None and parent_branch != b.name:
+                branch_parent_map[b.name] = parent_branch
+                found = True
+                break
+            # Continue walking up
+            for grandparent in sha_to_parents.get(parent_sha, []):
+                if grandparent not in visited:
+                    queue.append(grandparent)
+        if not found:
+            branch_parent_map[b.name] = default_branch
+
+    # Apply parent_branch to Branch objects
+    for b in branches:
+        b.parent_branch = branch_parent_map.get(b.name)
+
+    _progress(f"Parent branches computed for {len(branch_parent_map)} branches", end="\n")
+
     return branches, commits, merges

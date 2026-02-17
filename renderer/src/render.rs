@@ -245,7 +245,7 @@ fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, height: u32) {
     fill_rounded_rect(pixmap, 290.0, size_y - 14.0, 18.0, 20.0, 2.0, &paint);
     text_renderer.draw_text(pixmap, "many files, many lines", 314.0, size_y, 10.0, dim);
 
-    // Sacred timeline indicator
+    // Default branch indicator
     let mut gold_paint = Paint::default();
     gold_paint.set_color(sacred_gold());
     gold_paint.anti_alias = true;
@@ -261,7 +261,7 @@ fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, height: u32) {
     }
     text_renderer.draw_text(
         pixmap,
-        "= Sacred Timeline    Branches bow below = divergence",
+        "= default branch    Branch depth = divergence from parent",
         566.0,
         size_y,
         10.0,
@@ -309,16 +309,22 @@ fn draw_branch_labels(
     text_renderer: &TextRenderer,
     labels: &[BranchLabel],
     visible_x_limit: f32,
+    default_branch: &str,
 ) {
     for bl in labels {
         if bl.x > visible_x_limit {
             continue;
         }
 
-        let color = with_alpha(
-            branch_color(bl.slot, bl.has_conflicts, bl.is_stale),
-            0.9,
-        );
+        let is_default = bl.name == default_branch;
+        let color = if is_default {
+            with_alpha(sacred_gold(), 0.9)
+        } else {
+            with_alpha(
+                branch_color(bl.slot, bl.has_conflicts, bl.is_stale),
+                0.9,
+            )
+        };
 
         let label_x = (bl.x - 4.0).max(4.0);
         let label_y = bl.y - 14.0;
@@ -450,7 +456,7 @@ fn draw_stats_overlay(
     width: u32,
 ) {
     let panel_w: f32 = 320.0;
-    let panel_h: f32 = 300.0;
+    let panel_h: f32 = 324.0;
     let panel_x = width as f32 - panel_w - 20.0;
     let panel_y: f32 = 60.0;
 
@@ -484,7 +490,7 @@ fn draw_stats_overlay(
     let dim = Color::from_rgba8(160, 160, 170, 255);
     text_renderer.draw_text(
         pixmap,
-        "Code Inventory",
+        "Change Debt",
         panel_x + 12.0,
         panel_y + 20.0,
         13.0,
@@ -498,6 +504,11 @@ fn draw_stats_overlay(
 
     // Helper closure-like macro for drawing a stat line
     let lines: Vec<(&str, String, Color)> = vec![
+        (
+            "Total branches",
+            format!("{}", stats.total_branches),
+            dim,
+        ),
         (
             "Unmerged commits",
             format!("{}", stats.unmerged_commits),
@@ -618,7 +629,7 @@ fn render_frame(
     // Date axis
     draw_date_axis(&mut pixmap, text_renderer, date_ticks);
 
-    // Sacred Timeline (golden main branch line)
+    // Default branch line (golden)
     draw_sacred_timeline(&mut pixmap, layout, width);
 
     let visible = &positioned_commits[..visible_count.min(positioned_commits.len())];
@@ -627,8 +638,8 @@ fn render_frame(
     // Tags above main
     draw_tags(&mut pixmap, text_renderer, positioned_tags, visible_x_limit);
 
-    // Branch labels
-    draw_branch_labels(&mut pixmap, text_renderer, branch_labels, visible_x_limit);
+    // Branch labels (all branches including default)
+    draw_branch_labels(&mut pixmap, text_renderer, branch_labels, visible_x_limit, &layout.default_branch);
 
     // ── Draw phantom branch lines (always visible, even with no commits) ────
     {
@@ -733,12 +744,24 @@ fn render_frame(
                 pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
             }
         } else {
-            // For non-default branches, prepend a point at main_y (departure)
-            // and if merged, append a return point at main_y
+            // For non-default branches, prepend a departure point at parent branch's base_y
             let mut spline_points = Vec::with_capacity(points.len() + 2);
 
-            // Departure from main
-            spline_points.push((points[0].0, layout.main_y));
+            // Look up parent branch's base_y; fall back to main_y
+            let parent_y = branch_infos
+                .iter()
+                .find(|bi| bi.name == *branch_name)
+                .and_then(|bi| {
+                    bi.parent_branch.as_ref().and_then(|pb| {
+                        branch_infos
+                            .iter()
+                            .find(|pbi| pbi.name == *pb)
+                            .map(|pbi| pbi.base_y)
+                    })
+                })
+                .unwrap_or(layout.main_y);
+
+            spline_points.push((points[0].0, parent_y));
             spline_points.extend_from_slice(&points);
 
             draw_catmull_rom_spline(&mut pixmap, &spline_points, &paint, &stroke);

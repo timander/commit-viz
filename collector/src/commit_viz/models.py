@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 class Branch:
     name: str
     is_default: bool = False
+    parent_branch: str | None = None
 
 
 @dataclass

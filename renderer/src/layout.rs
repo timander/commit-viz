@@ -51,6 +51,7 @@ pub struct BranchVisualInfo {
     pub has_conflicts: bool,
     pub is_stale: bool,
     pub base_y: f32,
+    pub parent_branch: Option<String>,
 }
 
 pub struct NetworkLayout {
@@ -131,15 +132,15 @@ impl NetworkLayout {
         )
     }
 
-    /// Compute dynamic Y for a branch commit based on cumulative divergence.
-    fn divergence_y(&self, state: &BranchDivergenceState) -> f32 {
-        let base_offset = (state.slot as f32 + 1.0) * self.min_branch_spacing;
+    /// Compute dynamic Y for a branch commit based on cumulative divergence
+    /// relative to the parent branch's base_y.
+    fn divergence_y(&self, state: &BranchDivergenceState, parent_base_y: f32) -> f32 {
         let divergence = (1.0 + state.cum_commits as f64).log2() as f32 * 15.0
             + (1.0 + state.cum_lines as f64).log2() as f32 * 8.0
             + (1.0 + state.cum_files as f64).log2() as f32 * 5.0;
         let clamped = divergence.min(self.max_divergence_offset);
-        // Branches go BELOW main
-        self.main_y + base_offset + clamped
+        // Branches go BELOW their parent
+        parent_base_y + self.min_branch_spacing + clamped
     }
 
     /// Walk commits chronologically, assign slots on first appearance,
@@ -196,33 +197,109 @@ impl NetworkLayout {
             std::collections::HashSet::new()
         };
 
-        // Pre-assign slots to ALL non-default branches upfront
-        let mut non_default_branches: Vec<&str> = data
+        // Build parent_branch map from data
+        let parent_branch_map: HashMap<&str, &str> = data
             .branches
             .iter()
-            .filter(|b| b.name != self.default_branch)
+            .filter_map(|b| {
+                b.parent_branch
+                    .as_ref()
+                    .map(|pb| (b.name.as_str(), pb.as_str()))
+            })
+            .collect();
+
+        // DFS tree traversal for hierarchical slot assignment
+        // Build children map: parent -> Vec<child>
+        let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+        for b in &data.branches {
+            if b.name == self.default_branch {
+                continue;
+            }
+            let parent = parent_branch_map
+                .get(b.name.as_str())
+                .copied()
+                .unwrap_or(self.default_branch.as_str());
+            children.entry(parent).or_default().push(b.name.as_str());
+        }
+        // Sort children alphabetically at each level
+        for v in children.values_mut() {
+            v.sort();
+        }
+
+        // DFS from default branch to assign slots
+        let mut dfs_order: Vec<&str> = Vec::new();
+        let mut dfs_stack: Vec<&str> = Vec::new();
+        // Push children of default branch in reverse order (so first alphabetically pops first)
+        if let Some(kids) = children.get(self.default_branch.as_str()) {
+            for &kid in kids.iter().rev() {
+                dfs_stack.push(kid);
+            }
+        }
+        // Also handle branches whose parent isn't in our branch list (orphans → treat as children of default)
+        let branch_name_set: std::collections::HashSet<&str> =
+            data.branches.iter().map(|b| b.name.as_str()).collect();
+        let mut orphans: Vec<&str> = data
+            .branches
+            .iter()
+            .filter(|b| {
+                b.name != self.default_branch
+                    && parent_branch_map
+                        .get(b.name.as_str())
+                        .map_or(true, |p| !branch_name_set.contains(p))
+                    && !children
+                        .get(self.default_branch.as_str())
+                        .map_or(false, |kids| kids.contains(&b.name.as_str()))
+            })
             .map(|b| b.name.as_str())
             .collect();
-        non_default_branches.sort();
+        orphans.sort();
+        for &orphan in orphans.iter().rev() {
+            dfs_stack.push(orphan);
+        }
 
-        let branch_slot_map: HashMap<&str, usize> = non_default_branches
+        while let Some(branch) = dfs_stack.pop() {
+            dfs_order.push(branch);
+            if let Some(kids) = children.get(branch) {
+                for &kid in kids.iter().rev() {
+                    dfs_stack.push(kid);
+                }
+            }
+        }
+
+        let branch_slot_map: HashMap<&str, usize> = dfs_order
             .iter()
             .enumerate()
             .map(|(i, name)| (*name, i))
             .collect();
 
+        // Compute hierarchical base_y for each branch (DFS order guarantees parent computed first)
+        let mut branch_base_y: HashMap<&str, f32> = HashMap::new();
+        branch_base_y.insert(self.default_branch.as_str(), self.main_y);
+        for &branch_name in &dfs_order {
+            let parent = parent_branch_map
+                .get(branch_name)
+                .copied()
+                .unwrap_or(self.default_branch.as_str());
+            let parent_y = branch_base_y
+                .get(parent)
+                .copied()
+                .unwrap_or(self.main_y);
+            let base_y = parent_y + self.min_branch_spacing;
+            branch_base_y.insert(branch_name, base_y);
+        }
+
         // Initialize branch_states for all non-default branches
-        for (i, name) in non_default_branches.iter().enumerate() {
+        for &name in &dfs_order {
+            let slot = branch_slot_map.get(name).copied().unwrap_or(0);
             branch_states.insert(
                 name.to_string(),
                 BranchDivergenceState {
-                    slot: i,
+                    slot,
                     cum_commits: 0,
                     cum_lines: 0,
                     cum_files: 0,
-                    has_conflicts: conflict_branches.contains(*name),
-                    is_stale: stale_branches.contains(*name),
-
+                    has_conflicts: conflict_branches.contains(name),
+                    is_stale: stale_branches.contains(name),
                     last_commit_timestamp: None,
                 },
             );
@@ -256,7 +333,14 @@ impl NetworkLayout {
                 state.cum_files += commit.files_changed;
                 state.last_commit_timestamp = Some(commit.timestamp);
 
-                let y = self.divergence_y(state);
+                let parent_y = branch_base_y
+                    .get(commit.branch.as_str())
+                    .and_then(|_| {
+                        parent_branch_map.get(commit.branch.as_str()).and_then(|p| branch_base_y.get(p))
+                    })
+                    .copied()
+                    .unwrap_or(self.main_y);
+                let y = self.divergence_y(state, parent_y);
                 (y, state.slot, state.has_conflicts, state.is_stale)
             };
 
@@ -275,17 +359,24 @@ impl NetworkLayout {
             });
         }
 
-        // Build branch visual info with base_y for phantom rendering
+        // Build branch visual info with hierarchical base_y for phantom rendering
         let branch_infos: Vec<BranchVisualInfo> = branch_states
             .into_iter()
             .map(|(name, state)| {
-                let base_y = self.main_y + (state.slot as f32 + 1.0) * self.min_branch_spacing;
+                let base_y = branch_base_y
+                    .get(name.as_str())
+                    .copied()
+                    .unwrap_or(self.main_y + self.min_branch_spacing);
+                let parent = parent_branch_map
+                    .get(name.as_str())
+                    .map(|s| s.to_string());
                 BranchVisualInfo {
                     name,
                     slot: state.slot,
                     has_conflicts: state.has_conflicts,
                     is_stale: state.is_stale,
                     base_y,
+                    parent_branch: parent,
                 }
             })
             .collect();
@@ -356,7 +447,7 @@ impl NetworkLayout {
             .collect()
     }
 
-    /// Compute branch labels: the first commit position for each non-default branch.
+    /// Compute branch labels: the first commit position for each branch (including default).
     pub fn compute_branch_labels<'a>(
         &self,
         positioned: &[PositionedCommit<'a>],
@@ -365,9 +456,6 @@ impl NetworkLayout {
         let mut labels = Vec::new();
 
         for pc in positioned {
-            if pc.commit.branch == self.default_branch {
-                continue;
-            }
             if seen.contains_key(&pc.commit.branch) {
                 continue;
             }
