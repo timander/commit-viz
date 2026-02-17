@@ -3,11 +3,12 @@ from __future__ import annotations
 import bisect
 import math
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from commit_viz.models import (
     Branch,
     BranchLifespan,
+    ChangeFlowMetrics,
     Commit,
     CommitMergeLatencyEntry,
     CommitToReleaseDayEntry,
@@ -16,7 +17,6 @@ from commit_viz.models import (
     HistogramBin,
     Merge,
     ReleaseInterval,
-    ChangeFlowMetrics,
     WorkDisposition,
     WorkDispositionSegment,
 )
@@ -79,9 +79,7 @@ def compute_change_flow(
 
     # Sorted tagged commits for release latency
     tagged_commits: list[tuple[datetime, str]] = sorted(
-        (_parse_ts(c.timestamp), c.tags[0])
-        for c in commits
-        if c.tags
+        (_parse_ts(c.timestamp), c.tags[0]) for c in commits if c.tags
     )
     tag_timestamps = [t[0] for t in tagged_commits]
 
@@ -179,7 +177,9 @@ def compute_change_flow(
     while day <= max_date:
         count = day_commit_counts.get(day, 0)
         dom_cat = day_categories[day].most_common(1)[0][0] if day_categories[day] else "other"
-        daily_velocity.append(DailyVelocity(date=day.isoformat(), count=count, dominant_category=dom_cat))
+        daily_velocity.append(
+            DailyVelocity(date=day.isoformat(), count=count, dominant_category=dom_cat)
+        )
         counts_list.append(count)
         day += timedelta(days=1)
 
@@ -274,7 +274,9 @@ def compute_change_flow(
             curr_ts, curr_tag = tagged_commits[i]
             days = (curr_ts - prev_ts).total_seconds() / 86400.0
             release_intervals.append(
-                ReleaseInterval(tag=curr_tag, date=curr_ts.isoformat(), days_since_previous=round(days, 1))
+                ReleaseInterval(
+                    tag=curr_tag, date=curr_ts.isoformat(), days_since_previous=round(days, 1)
+                )
             )
             interval_values.append(days)
 
@@ -291,7 +293,9 @@ def compute_change_flow(
         ]
         for label, lo, hi in bins_def:
             count = sum(1 for v in interval_values if lo <= v < hi)
-            release_interval_distribution.append(HistogramBin(label=label, min_val=lo, max_val=hi, count=count))
+            release_interval_distribution.append(
+                HistogramBin(label=label, min_val=lo, max_val=hi, count=count)
+            )
 
     ri_mean = sum(interval_values) / len(interval_values) if interval_values else 0.0
     ri_median = _median(interval_values)
@@ -337,7 +341,9 @@ def compute_change_flow(
         segment_agg[(c.category, speed)] = (prev_lines + lines, prev_count + 1)
 
     segments = [
-        WorkDispositionSegment(category=cat, merge_speed=speed, lines_changed=lines, commit_count=cnt)
+        WorkDispositionSegment(
+            category=cat, merge_speed=speed, lines_changed=lines, commit_count=cnt
+        )
         for (cat, speed), (lines, cnt) in sorted(segment_agg.items())
     ]
 
@@ -360,8 +366,12 @@ def compute_change_flow(
         total_drought_days=total_drought,
         commit_merge_latency=commit_merge_latency,
         merge_median_latency=round(_median(merge_latencies), 1),
-        merge_pct_within_7d=round(merged_within_7d / len(merge_latencies) * 100, 1) if merge_latencies else 0.0,
-        merge_pct_within_30d=round(merged_within_30d / len(merge_latencies) * 100, 1) if merge_latencies else 0.0,
+        merge_pct_within_7d=round(merged_within_7d / len(merge_latencies) * 100, 1)
+        if merge_latencies
+        else 0.0,
+        merge_pct_within_30d=round(merged_within_30d / len(merge_latencies) * 100, 1)
+        if merge_latencies
+        else 0.0,
         release_intervals=release_intervals,
         release_interval_distribution=release_interval_distribution,
         release_interval_mean=round(ri_mean, 1),

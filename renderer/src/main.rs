@@ -17,15 +17,15 @@ fn main() {
     let config = RenderConfig::parse();
 
     let num_threads = rayon::current_num_threads();
-    eprintln!("Parallelization: {} threads available (rayon auto-detected)", num_threads);
+    eprintln!("Parallelization: {num_threads} threads available (rayon auto-detected)");
 
     // Phase 1: Load data
     let phase_start = Instant::now();
-    eprintln!("Loading data from {:?}...", config.input);
+    eprintln!("Loading data from {}...", config.input.display());
     let data = match data::load_data(&config.input) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error loading data: {}", e);
+            eprintln!("Error loading data: {e}");
             std::process::exit(1);
         }
     };
@@ -43,23 +43,31 @@ fn main() {
         let phase_start = Instant::now();
         eprintln!("Generating statistics report...");
         if let Err(e) = report::render_report(&data, report_path) {
-            eprintln!("Error rendering report: {}", e);
+            eprintln!("Error rendering report: {e}");
             std::process::exit(1);
         }
-        eprintln!("Report written to {:?} [{:.2}s]", report_path, phase_start.elapsed().as_secs_f64());
+        eprintln!(
+            "Report written to {} [{:.2}s]",
+            report_path.display(),
+            phase_start.elapsed().as_secs_f64()
+        );
     }
 
     // Phase 3: Change flow visualizations (parallel chart rendering)
     if let Some(ref cf_dir) = config.change_flow_dir {
         let phase_start = Instant::now();
-        eprintln!("Generating change flow visualizations ({} threads)...", num_threads);
+        eprintln!("Generating change flow visualizations ({num_threads} threads)...");
         if let Some(ref stats) = data.statistics {
             if let Some(ref cf) = stats.change_flow {
                 if let Err(e) = change_flow_charts::render_all(cf, cf_dir) {
-                    eprintln!("Error rendering change flow charts: {}", e);
+                    eprintln!("Error rendering change flow charts: {e}");
                     std::process::exit(1);
                 }
-                eprintln!("Change flow charts written to {:?} [{:.2}s]", cf_dir, phase_start.elapsed().as_secs_f64());
+                eprintln!(
+                    "Change flow charts written to {} [{:.2}s]",
+                    cf_dir.display(),
+                    phase_start.elapsed().as_secs_f64()
+                );
             } else {
                 eprintln!("No change flow metrics in data — skipping charts");
             }
@@ -71,10 +79,13 @@ fn main() {
     // Phase 4: Video rendering (parallel frame generation)
     let phase_start = Instant::now();
     if let Err(e) = render::render_video(&data, &config) {
-        eprintln!("Error rendering video: {}", e);
+        eprintln!("Error rendering video: {e}");
         std::process::exit(1);
     }
-    eprintln!("Video rendering complete [{:.2}s]", phase_start.elapsed().as_secs_f64());
+    eprintln!(
+        "Video rendering complete [{:.2}s]",
+        phase_start.elapsed().as_secs_f64()
+    );
 
     eprintln!("Total elapsed: {:.2}s", total_start.elapsed().as_secs_f64());
 }

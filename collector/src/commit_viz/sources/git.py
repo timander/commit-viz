@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from git import Repo
 
@@ -23,17 +23,37 @@ TICKET_RE = re.compile(r"(?P<ticket>[A-Z][A-Z0-9]+-\d+)")
 # Keywords for category classification when conventional type is not present.
 # Order matters: first match wins. More specific patterns before general ones.
 _CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
-    ("merge", [
-        "merge pull request", "merge branch", "merge remote",
-        "merged in", "merge commit", "squash and merge",
-    ]),
-    ("squash", [
-        "squash", "squashed commit", "fixup!", "amend",
-    ]),
-    ("conflict", [
-        "merge conflict", "conflict resolution", "resolve conflict",
-        "fix conflict", "resolved merge", "fix merge",
-    ]),
+    (
+        "merge",
+        [
+            "merge pull request",
+            "merge branch",
+            "merge remote",
+            "merged in",
+            "merge commit",
+            "squash and merge",
+        ],
+    ),
+    (
+        "squash",
+        [
+            "squash",
+            "squashed commit",
+            "fixup!",
+            "amend",
+        ],
+    ),
+    (
+        "conflict",
+        [
+            "merge conflict",
+            "conflict resolution",
+            "resolve conflict",
+            "fix conflict",
+            "resolved merge",
+            "fix merge",
+        ],
+    ),
     ("release", ["release", "bump version", "version bump", "prepare release"]),
     ("bugfix", ["fix", "bugfix", "hotfix", "patch", "repair", "resolve"]),
     ("feature", ["feat", "add", "implement", "introduce", "new"]),
@@ -101,8 +121,7 @@ def _classify_category(
 
     # Auto-detect merge commits by parent count even if message doesn't say so
     if is_merge_commit and not any(
-        kw in msg_lower
-        for kw in ("feat", "fix", "add", "implement", "release", "doc", "test")
+        kw in msg_lower for kw in ("feat", "fix", "add", "implement", "release", "doc", "test")
     ):
         return "merge"
 
@@ -126,7 +145,7 @@ def _parse_date_bound(value: str) -> datetime | None:
     if not value or value.lower() in ("all", "beginning", "present", "now", "today"):
         return None
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(value).replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -136,13 +155,12 @@ def _in_date_range(ts: datetime, start: str, end: str) -> bool:
     if start_dt and ts < start_dt:
         return False
     end_dt = _parse_date_bound(end)
-    if end_dt and ts > end_dt:
-        return False
-    return True
+    return not (end_dt and ts > end_dt)
 
 
-def _commit_timestamp(commit) -> datetime:
-    return commit.committed_datetime.astimezone(timezone.utc)
+def _commit_timestamp(commit: object) -> datetime:
+    dt: datetime = commit.committed_datetime.astimezone(UTC)  # type: ignore[attr-defined]
+    return dt
 
 
 def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
@@ -189,7 +207,7 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
     watcher = threading.Thread(target=watchdog, daemon=True)
     watcher.start()
 
-    for line in proc.stdout:
+    for line in proc.stdout or []:
         line_count += 1
         line = line.strip()
         if not line:
@@ -208,8 +226,7 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
             if len(stats) % 200 == 0 and now - last_progress_time > 0.5:
                 elapsed = now - t0
                 _progress(
-                    f"Numstat: {len(stats)} commits parsed, "
-                    f"{line_count} lines [{elapsed:.0f}s]..."
+                    f"Numstat: {len(stats)} commits parsed, {line_count} lines [{elapsed:.0f}s]..."
                 )
                 last_progress_time = now
         elif current_sha is not None:
@@ -239,7 +256,9 @@ def _collect_numstat(repo_path: str) -> dict[str, tuple[int, int, int]]:
 
 
 def _build_branch_membership(
-    repo, refs: list, max_workers: int,
+    repo,
+    refs: list,
+    max_workers: int,
 ) -> dict[str, set[str]]:
     """Build branch membership map: commit SHA -> set of branch names.
 
@@ -258,7 +277,7 @@ def _build_branch_membership(
         nonlocal ref_count, last_progress_time
         branch_name = ref.name
         if branch_name.startswith("origin/"):
-            branch_name = branch_name[len("origin/"):]
+            branch_name = branch_name[len("origin/") :]
         if branch_name == "HEAD":
             return
 
@@ -290,12 +309,12 @@ def _build_branch_membership(
     return commit_to_branches
 
 
-def _detect_default_branch(repo, branch_names: set[str]) -> str:
+def _detect_default_branch(repo: object, branch_names: set[str]) -> str:
     """Detect default branch with priority: main > active_branch > master > sorted first."""
     if "main" in branch_names:
         return "main"
     try:
-        active = repo.active_branch.name
+        active: str = repo.active_branch.name  # type: ignore[attr-defined]
         if active in branch_names:
             return active
     except TypeError:
@@ -319,7 +338,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     for ref in repo.references:
         name = ref.name
         if name.startswith("origin/"):
-            name = name[len("origin/"):]
+            name = name[len("origin/") :]
         if name == "HEAD":
             continue
         branch_names.add(name)
@@ -328,8 +347,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     default_branch = _detect_default_branch(repo, branch_names)
 
     branches = [
-        Branch(name=name, is_default=(name == default_branch))
-        for name in sorted(branch_names)
+        Branch(name=name, is_default=(name == default_branch)) for name in sorted(branch_names)
     ]
     _progress(f"Found {len(branches)} branches", end="\n")
 
@@ -362,6 +380,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
 
     t0 = time.monotonic()
     ref_count = 0
+    total_refs = len(refs)
     last_progress_time = time.monotonic()
 
     for ref in repo.references:
@@ -380,25 +399,22 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
             non_default = candidate_branches - {default_branch}
             branch = sorted(non_default)[0] if non_default else default_branch
 
-            conv_type = _parse_conventional_type(c.message)
-            message_line = c.message.strip().split("\n")[0]
+            msg = str(c.message)
+            conv_type = _parse_conventional_type(msg)
+            message_line = msg.strip().split("\n")[0]
 
             is_merge = len(c.parents) >= 2
             category = _classify_category(message_line, conv_type, is_merge)
 
             # Detect squash commits: single parent but message indicates bundling
-            is_squash = (
-                not is_merge
-                and any(
-                    kw in message_line.lower()
-                    for kw in ("squash", "squashed", "fixup!")
-                )
+            is_squash = not is_merge and any(
+                kw in message_line.lower() for kw in ("squash", "squashed", "fixup!")
             )
 
             # Get numstat data
             ins, dels, fchanged = numstat.get(c.hexsha, (0, 0, 0))
 
-            commit = Commit(
+            commit_obj = Commit(
                 sha=c.hexsha,
                 author=c.author.name or "",
                 timestamp=ts.isoformat(),
@@ -407,7 +423,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
                 parents=[p.hexsha for p in c.parents],
                 tags=tag_map.get(c.hexsha, []),
                 conventional_type=conv_type,
-                ticket_id=_parse_ticket_id(c.message),
+                ticket_id=_parse_ticket_id(msg),
                 insertions=ins,
                 deletions=dels,
                 files_changed=fchanged,
@@ -415,7 +431,7 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
                 is_merge_commit=is_merge,
                 is_squash=is_squash,
             )
-            commits.append(commit)
+            commits.append(commit_obj)
 
             # Detect merge commits (2+ parents)
             if is_merge:
@@ -451,18 +467,18 @@ def collect_git(config: Config) -> tuple[list[Branch], list[Commit], list[Merge]
     # that different branch is the parent.
     _progress("Computing parent branches...")
     sha_to_branch: dict[str, str] = {}
-    for c in commits:
-        sha_to_branch[c.sha] = c.branch
+    for cm in commits:
+        sha_to_branch[cm.sha] = cm.branch
 
     sha_to_parents: dict[str, list[str]] = {}
-    for c in commits:
-        sha_to_parents[c.sha] = c.parents
+    for cm in commits:
+        sha_to_parents[cm.sha] = cm.parents
 
     # Find first commit per branch (commits are sorted by timestamp)
     first_commit_by_branch: dict[str, Commit] = {}
-    for c in commits:
-        if c.branch not in first_commit_by_branch:
-            first_commit_by_branch[c.branch] = c
+    for cm in commits:
+        if cm.branch not in first_commit_by_branch:
+            first_commit_by_branch[cm.branch] = cm
 
     branch_parent_map: dict[str, str] = {}
     for b in branches:

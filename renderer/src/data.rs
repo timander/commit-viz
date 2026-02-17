@@ -77,6 +77,7 @@ pub struct CommitToReleaseDayEntry {
     #[serde(default)]
     pub avg_days_to_release: f64,
     #[serde(default)]
+    #[allow(dead_code)]
     pub unreleased_count: u32,
 }
 

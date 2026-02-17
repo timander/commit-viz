@@ -68,15 +68,7 @@ fn with_alpha(c: Color, a: f32) -> Color {
 
 // ── Drawing helpers ─────────────────────────────────────────────────────────
 
-fn fill_rounded_rect(
-    pixmap: &mut Pixmap,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    r: f32,
-    paint: &Paint,
-) {
+fn fill_rounded_rect(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, paint: &Paint) {
     let r = r.min(w / 2.0).min(h / 2.0);
     let mut pb = PathBuilder::new();
     pb.move_to(x + r, y);
@@ -257,7 +249,13 @@ fn draw_legend(pixmap: &mut Pixmap, text_renderer: &TextRenderer, height: u32) {
     pb.move_to(520.0, size_y - 4.0);
     pb.line_to(560.0, size_y - 4.0);
     if let Some(path) = pb.finish() {
-        pixmap.stroke_path(&path, &gold_paint, &gold_stroke, Transform::identity(), None);
+        pixmap.stroke_path(
+            &path,
+            &gold_paint,
+            &gold_stroke,
+            Transform::identity(),
+            None,
+        );
     }
     text_renderer.draw_text(
         pixmap,
@@ -296,7 +294,13 @@ fn draw_date_axis(pixmap: &mut Pixmap, text_renderer: &TextRenderer, ticks: &[Da
         pb.move_to(tick.x, 50.0);
         pb.line_to(tick.x, 62.0);
         if let Some(path) = pb.finish() {
-            pixmap.stroke_path(&path, &tick_paint, &tick_stroke, Transform::identity(), None);
+            pixmap.stroke_path(
+                &path,
+                &tick_paint,
+                &tick_stroke,
+                Transform::identity(),
+                None,
+            );
         }
         text_renderer.draw_text(pixmap, &tick.label, tick.x - 20.0, 48.0, 10.0, label_color);
     }
@@ -320,10 +324,7 @@ fn draw_branch_labels(
         let color = if is_default {
             with_alpha(sacred_gold(), 0.9)
         } else {
-            with_alpha(
-                branch_color(bl.slot, bl.has_conflicts, bl.is_stale),
-                0.9,
-            )
+            with_alpha(branch_color(bl.slot, bl.has_conflicts, bl.is_stale), 0.9)
         };
 
         let label_x = (bl.x - 4.0).max(4.0);
@@ -351,7 +352,13 @@ fn draw_sacred_timeline(pixmap: &mut Pixmap, layout: &NetworkLayout, width: u32)
     pb.move_to(layout.margin_left, main_y);
     pb.line_to(width as f32 - layout.margin_right, main_y);
     if let Some(path) = pb.finish() {
-        pixmap.stroke_path(&path, &glow_paint, &glow_stroke, Transform::identity(), None);
+        pixmap.stroke_path(
+            &path,
+            &glow_paint,
+            &glow_stroke,
+            Transform::identity(),
+            None,
+        );
     }
 
     // Core line (bright gold)
@@ -367,7 +374,13 @@ fn draw_sacred_timeline(pixmap: &mut Pixmap, layout: &NetworkLayout, width: u32)
     pb.move_to(layout.margin_left, main_y);
     pb.line_to(width as f32 - layout.margin_right, main_y);
     if let Some(path) = pb.finish() {
-        pixmap.stroke_path(&path, &core_paint, &core_stroke, Transform::identity(), None);
+        pixmap.stroke_path(
+            &path,
+            &core_paint,
+            &core_stroke,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -504,36 +517,24 @@ fn draw_stats_overlay(
 
     // Helper closure-like macro for drawing a stat line
     let lines: Vec<(&str, String, Color)> = vec![
-        (
-            "Total branches",
-            format!("{}", stats.total_branches),
-            dim,
-        ),
+        ("Total branches", format!("{}", stats.total_branches), dim),
         (
             "Unmerged commits",
             format!("{}", stats.unmerged_commits),
-            threshold_color(stats.unmerged_commits as f64, 10.0, 50.0),
+            threshold_color(f64::from(stats.unmerged_commits), 10.0, 50.0),
         ),
-        (
-            "Active branches",
-            format!("{}", stats.active_branches),
-            dim,
-        ),
+        ("Active branches", format!("{}", stats.active_branches), dim),
         (
             "Stale branches",
             format!("{}", stats.stale_branches),
-            threshold_color(stats.stale_branches as f64, 2.0, 5.0),
+            threshold_color(f64::from(stats.stale_branches), 2.0, 5.0),
         ),
         (
             "Unmerged lines",
             format_number(stats.unmerged_lines),
             threshold_color(stats.unmerged_lines as f64, 1000.0, 5000.0),
         ),
-        (
-            "Unmerged files",
-            format!("{}", stats.unmerged_files),
-            dim,
-        ),
+        ("Unmerged files", format!("{}", stats.unmerged_files), dim),
         (
             "Integration debt",
             format_number(stats.integration_debt),
@@ -574,7 +575,7 @@ fn format_number(n: u64) -> String {
     } else if n >= 1_000 {
         format!("{:.1}K", n as f64 / 1_000.0)
     } else {
-        format!("{}", n)
+        format!("{n}")
     }
 }
 
@@ -639,14 +640,18 @@ fn render_frame(
     draw_tags(&mut pixmap, text_renderer, positioned_tags, visible_x_limit);
 
     // Branch labels (all branches including default)
-    draw_branch_labels(&mut pixmap, text_renderer, branch_labels, visible_x_limit, &layout.default_branch);
+    draw_branch_labels(
+        &mut pixmap,
+        text_renderer,
+        branch_labels,
+        visible_x_limit,
+        &layout.default_branch,
+    );
 
     // ── Draw phantom branch lines (always visible, even with no commits) ────
     {
-        let visible_branches: std::collections::HashSet<&str> = visible
-            .iter()
-            .map(|pc| pc.commit.branch.as_str())
-            .collect();
+        let visible_branches: std::collections::HashSet<&str> =
+            visible.iter().map(|pc| pc.commit.branch.as_str()).collect();
 
         for bi in branch_infos {
             if visible_branches.contains(bi.name.as_str()) {
@@ -698,10 +703,7 @@ fn render_frame(
     let mut branch_commits: std::collections::HashMap<&str, Vec<usize>> =
         std::collections::HashMap::new();
     for (i, pc) in visible.iter().enumerate() {
-        branch_commits
-            .entry(&pc.commit.branch)
-            .or_default()
-            .push(i);
+        branch_commits.entry(&pc.commit.branch).or_default().push(i);
     }
 
     for (branch_name, indices) in &branch_commits {
@@ -731,7 +733,10 @@ fn render_frame(
         };
 
         // Collect points for spline
-        let points: Vec<(f32, f32)> = indices.iter().map(|&i| (visible[i].x, visible[i].y)).collect();
+        let points: Vec<(f32, f32)> = indices
+            .iter()
+            .map(|&i| (visible[i].x, visible[i].y))
+            .collect();
 
         if is_default {
             // Default branch is straight — just draw line segments
@@ -787,7 +792,7 @@ fn render_frame(
 
         let mut pb = PathBuilder::new();
         pb.move_to(m.from_x, m.from_y);
-        let mid_x = (m.from_x + m.to_x) / 2.0;
+        let mid_x = f32::midpoint(m.from_x, m.to_x);
         pb.cubic_to(mid_x, m.from_y, mid_x, m.to_y, m.to_x, m.to_y);
 
         if let Some(path) = pb.finish() {
@@ -921,7 +926,11 @@ pub fn render_video(
     });
     let total_frames = duration_secs * config.fps;
 
-    let mode_label = if config.granular { "granular" } else { "optimized" };
+    let mode_label = if config.granular {
+        "granular"
+    } else {
+        "optimized"
+    };
     eprintln!(
         "Rendering {} commits over {} frames ({} seconds at {} fps, {} mode)...",
         num_commits, total_frames, duration_secs, config.fps, mode_label
@@ -978,9 +987,12 @@ pub fn render_video(
                 } else if let (Some(ts), Some(te)) = (t_start, t_end) {
                     // Optimized mode: time-distributed via binary search
                     let total_duration = (te - ts).num_seconds().max(1) as f64;
-                    let frame_ratio = idx as f64 / (total_frames - 1).max(1) as f64;
-                    let t_frame = ts + chrono::Duration::seconds((frame_ratio * total_duration) as i64);
-                    data.commits.partition_point(|c| c.timestamp <= t_frame).max(1)
+                    let frame_ratio = f64::from(idx) / f64::from((total_frames - 1).max(1));
+                    let t_frame =
+                        ts + chrono::Duration::seconds((frame_ratio * total_duration) as i64);
+                    data.commits
+                        .partition_point(|c| c.timestamp <= t_frame)
+                        .max(1)
                 } else {
                     num_commits
                 };
@@ -1015,8 +1027,8 @@ pub fn render_video(
             stdin.write_all(pixmap.data())?;
         }
 
-        if frame_idx % config.fps == 0 || batch_end == total_frames {
-            eprint!("\r  Frame {}/{}", batch_end, total_frames);
+        if frame_idx.is_multiple_of(config.fps) || batch_end == total_frames {
+            eprint!("\r  Frame {batch_end}/{total_frames}");
         }
 
         frame_idx = batch_end;
@@ -1027,9 +1039,9 @@ pub fn render_video(
     eprintln!();
 
     if status.success() {
-        eprintln!("Video written to {}", output_path);
+        eprintln!("Video written to {output_path}");
     } else {
-        return Err(format!("FFmpeg exited with status: {}", status).into());
+        return Err(format!("FFmpeg exited with status: {status}").into());
     }
 
     Ok(())

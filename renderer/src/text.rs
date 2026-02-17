@@ -40,15 +40,22 @@ impl TextRenderer {
 
             for gy in 0..metrics.height {
                 for gx in 0..metrics.width {
-                    let coverage = bitmap[gy * metrics.width + gx] as f32 / 255.0;
+                    let coverage = f32::from(bitmap[gy * metrics.width + gx]) / 255.0;
                     if coverage < 0.01 {
                         continue;
                     }
 
+                    #[allow(clippy::cast_possible_wrap)]
                     let px = (cursor_x + gx as f32) as i32;
+                    #[allow(clippy::cast_possible_wrap)]
                     let py = (glyph_y + gy as f32) as i32;
 
-                    if px < 0 || py < 0 || px >= pixmap.width() as i32 || py >= pixmap.height() as i32 {
+                    #[allow(clippy::cast_possible_wrap)]
+                    if px < 0
+                        || py < 0
+                        || px >= pixmap.width() as i32
+                        || py >= pixmap.height() as i32
+                    {
                         continue;
                     }
 
@@ -61,10 +68,13 @@ impl TextRenderer {
                     let alpha = coverage * a;
                     let inv = 1.0 - alpha;
                     // Data is premultiplied RGBA
-                    let bg_a = data[idx + 3] as f32 / 255.0;
-                    data[idx] = ((r * alpha + data[idx] as f32 / 255.0 * inv) * 255.0).min(255.0) as u8;
-                    data[idx + 1] = ((g * alpha + data[idx + 1] as f32 / 255.0 * inv) * 255.0).min(255.0) as u8;
-                    data[idx + 2] = ((b * alpha + data[idx + 2] as f32 / 255.0 * inv) * 255.0).min(255.0) as u8;
+                    let bg_a = f32::from(data[idx + 3]) / 255.0;
+                    data[idx] =
+                        ((r * alpha + f32::from(data[idx]) / 255.0 * inv) * 255.0).min(255.0) as u8;
+                    data[idx + 1] = ((g * alpha + f32::from(data[idx + 1]) / 255.0 * inv) * 255.0)
+                        .min(255.0) as u8;
+                    data[idx + 2] = ((b * alpha + f32::from(data[idx + 2]) / 255.0 * inv) * 255.0)
+                        .min(255.0) as u8;
                     data[idx + 3] = ((alpha + bg_a * inv) * 255.0).min(255.0) as u8;
                 }
             }

@@ -1,4 +1,6 @@
-.PHONY: help analyze rerun change-flow build-renderer build-collector doctor
+.PHONY: help analyze rerun change-flow build-renderer build-collector doctor \
+       lint lint-python lint-rust fmt fmt-python fmt-rust test test-python test-rust coverage
+
 .DEFAULT_GOAL := help
 
 # Show all available commands
@@ -12,6 +14,12 @@ help:
 	@echo "  build-collector   Install Python collector dependencies (uv sync)"
 	@echo "  build-renderer    Build Rust renderer binary (cargo build --release)"
 	@echo ""
+	@echo "Quality:"
+	@echo "  lint              Run all linters (ruff, mypy, clippy)"
+	@echo "  fmt               Auto-format all code (ruff format, cargo fmt)"
+	@echo "  test              Run all tests (pytest, cargo test)"
+	@echo "  coverage          Run tests with coverage reports"
+	@echo ""
 	@echo "Analysis:"
 	@echo "  analyze           Interactive wizard — new repo or rerun existing"
 	@echo "  rerun SLUG=<name> Re-run full pipeline on existing project"
@@ -20,6 +28,7 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make doctor                  # verify all tools are installed"
+	@echo "  make lint                    # check code quality"
 	@echo "  make analyze                 # launch interactive wizard"
 	@echo "  make rerun SLUG=slf4j        # re-collect and re-render slf4j"
 	@echo "  make change-flow SLUG=flask  # regenerate flask charts only"
@@ -63,3 +72,35 @@ build-renderer:
 
 build-collector:
 	cd collector && uv sync
+
+# ── Code quality ──────────────────────────────────────────────────────────────
+
+lint: lint-python lint-rust
+
+lint-python:
+	cd collector && uv run ruff check src/ tests/
+	cd collector && uv run mypy src/
+
+lint-rust:
+	cd renderer && cargo clippy --release -- -D warnings
+
+fmt: fmt-python fmt-rust
+
+fmt-python:
+	cd collector && uv run ruff format src/ tests/
+	cd collector && uv run ruff check --fix src/ tests/
+
+fmt-rust:
+	cd renderer && cargo fmt
+
+test: test-python test-rust
+
+test-python:
+	cd collector && uv run pytest
+
+test-rust:
+	cd renderer && cargo test
+
+coverage:
+	cd collector && uv run pytest --cov=commit_viz --cov-report=term-missing
+	cd renderer && cargo test

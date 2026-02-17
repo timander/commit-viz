@@ -66,7 +66,7 @@ def load_config(config_path: str | Path) -> Config:
     load_dotenv()
 
     config_path = Path(config_path)
-    with open(config_path) as f:
+    with config_path.open() as f:
         raw = yaml.safe_load(f)
 
     raw = raw or {}

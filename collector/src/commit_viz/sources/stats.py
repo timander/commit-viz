@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime
 
 from commit_viz.models import Commit, ReleaseCycleStats, Statistics
 
@@ -22,9 +22,8 @@ def compute_statistics(commits: list[Commit]) -> Statistics:
 
     # Unique authors
     authors = Counter(c.author for c in commits)
-    top_authors = [
-        {"author": author, "commits": count}
-        for author, count in authors.most_common(20)
+    top_authors: list[dict[str, int | str]] = [
+        {"author": author, "commits": count} for author, count in authors.most_common(20)
     ]
 
     # By category
@@ -35,9 +34,7 @@ def compute_statistics(commits: list[Commit]) -> Statistics:
 
     # Release cycle analysis — look for tagged commits
     tagged_timestamps: list[datetime] = sorted(
-        datetime.fromisoformat(c.timestamp)
-        for c in commits
-        if c.tags
+        datetime.fromisoformat(c.timestamp) for c in commits if c.tags
     )
 
     release_cycles = ReleaseCycleStats()

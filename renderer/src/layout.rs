@@ -93,8 +93,7 @@ impl NetworkLayout {
             .branches
             .iter()
             .find(|b| b.is_default)
-            .map(|b| b.name.clone())
-            .unwrap_or_else(|| "main".to_string());
+            .map_or_else(|| "main".to_string(), |b| b.name.clone());
 
         let usable_height = height as f32 - margin_top - margin_bottom;
         // Main at ~15% down from top of usable area, leaving room above for tags
@@ -133,11 +132,11 @@ impl NetworkLayout {
     }
 
     /// Compute dynamic Y for a branch commit based on cumulative divergence
-    /// relative to the parent branch's base_y.
+    /// relative to the parent branch's `base_y`.
     fn divergence_y(&self, state: &BranchDivergenceState, parent_base_y: f32) -> f32 {
-        let divergence = (1.0 + state.cum_commits as f64).log2() as f32 * 15.0
+        let divergence = (1.0 + f64::from(state.cum_commits)).log2() as f32 * 15.0
             + (1.0 + state.cum_lines as f64).log2() as f32 * 8.0
-            + (1.0 + state.cum_files as f64).log2() as f32 * 5.0;
+            + (1.0 + f64::from(state.cum_files)).log2() as f32 * 5.0;
         let clamped = divergence.min(self.max_divergence_offset);
         // Branches go BELOW their parent
         parent_base_y + self.min_branch_spacing + clamped
@@ -154,11 +153,8 @@ impl NetworkLayout {
         let mut result = Vec::with_capacity(total);
 
         // Build merge set to detect which branches get merged
-        let merge_from_branches: std::collections::HashSet<&str> = data
-            .merges
-            .iter()
-            .map(|m| m.from_branch.as_str())
-            .collect();
+        let merge_from_branches: std::collections::HashSet<&str> =
+            data.merges.iter().map(|m| m.from_branch.as_str()).collect();
 
         // Detect conflict branches: any branch that has a commit with category "conflict"
         let mut conflict_branches: std::collections::HashSet<String> =
@@ -223,7 +219,7 @@ impl NetworkLayout {
         }
         // Sort children alphabetically at each level
         for v in children.values_mut() {
-            v.sort();
+            v.sort_unstable();
         }
 
         // DFS from default branch to assign slots
@@ -245,14 +241,14 @@ impl NetworkLayout {
                 b.name != self.default_branch
                     && parent_branch_map
                         .get(b.name.as_str())
-                        .map_or(true, |p| !branch_name_set.contains(p))
+                        .is_none_or(|p| !branch_name_set.contains(p))
                     && !children
                         .get(self.default_branch.as_str())
-                        .map_or(false, |kids| kids.contains(&b.name.as_str()))
+                        .is_some_and(|kids| kids.contains(&b.name.as_str()))
             })
             .map(|b| b.name.as_str())
             .collect();
-        orphans.sort();
+        orphans.sort_unstable();
         for &orphan in orphans.iter().rev() {
             dfs_stack.push(orphan);
         }
@@ -280,10 +276,7 @@ impl NetworkLayout {
                 .get(branch_name)
                 .copied()
                 .unwrap_or(self.default_branch.as_str());
-            let parent_y = branch_base_y
-                .get(parent)
-                .copied()
-                .unwrap_or(self.main_y);
+            let parent_y = branch_base_y.get(parent).copied().unwrap_or(self.main_y);
             let base_y = parent_y + self.min_branch_spacing;
             branch_base_y.insert(branch_name, base_y);
         }
@@ -312,31 +305,34 @@ impl NetworkLayout {
             let (y, slot, has_conflicts, is_stale) = if is_default {
                 (self.main_y, 0, false, false)
             } else {
-                let slot = branch_slot_map.get(commit.branch.as_str()).copied().unwrap_or(0);
+                let slot = branch_slot_map
+                    .get(commit.branch.as_str())
+                    .copied()
+                    .unwrap_or(0);
                 let state = branch_states
                     .entry(commit.branch.clone())
-                    .or_insert_with(|| {
-                        BranchDivergenceState {
-                            slot,
-                            cum_commits: 0,
-                            cum_lines: 0,
-                            cum_files: 0,
-                            has_conflicts: conflict_branches.contains(&commit.branch),
-                            is_stale: stale_branches.contains(&commit.branch),
+                    .or_insert_with(|| BranchDivergenceState {
+                        slot,
+                        cum_commits: 0,
+                        cum_lines: 0,
+                        cum_files: 0,
+                        has_conflicts: conflict_branches.contains(&commit.branch),
+                        is_stale: stale_branches.contains(&commit.branch),
 
-                            last_commit_timestamp: None,
-                        }
+                        last_commit_timestamp: None,
                     });
 
                 state.cum_commits += 1;
-                state.cum_lines += (commit.insertions + commit.deletions) as u64;
+                state.cum_lines += u64::from(commit.insertions + commit.deletions);
                 state.cum_files += commit.files_changed;
                 state.last_commit_timestamp = Some(commit.timestamp);
 
                 let parent_y = branch_base_y
                     .get(commit.branch.as_str())
                     .and_then(|_| {
-                        parent_branch_map.get(commit.branch.as_str()).and_then(|p| branch_base_y.get(p))
+                        parent_branch_map
+                            .get(commit.branch.as_str())
+                            .and_then(|p| branch_base_y.get(p))
                     })
                     .copied()
                     .unwrap_or(self.main_y);
@@ -369,7 +365,7 @@ impl NetworkLayout {
                     .unwrap_or(self.main_y + self.min_branch_spacing);
                 let parent = parent_branch_map
                     .get(name.as_str())
-                    .map(|s| s.to_string());
+                    .map(std::string::ToString::to_string);
                 BranchVisualInfo {
                     name,
                     slot: state.slot,
@@ -385,6 +381,7 @@ impl NetworkLayout {
     }
 
     /// Look up merge positions from positioned commits (not fixed lanes).
+    #[allow(clippy::unused_self)]
     pub fn position_merges_dynamic(
         &self,
         data: &CollectedData,
@@ -448,10 +445,8 @@ impl NetworkLayout {
     }
 
     /// Compute branch labels: the first commit position for each branch (including default).
-    pub fn compute_branch_labels<'a>(
-        &self,
-        positioned: &[PositionedCommit<'a>],
-    ) -> Vec<BranchLabel> {
+    #[allow(clippy::unused_self)]
+    pub fn compute_branch_labels(&self, positioned: &[PositionedCommit<'_>]) -> Vec<BranchLabel> {
         let mut seen: HashMap<String, bool> = HashMap::new();
         let mut labels = Vec::new();
 
@@ -494,10 +489,10 @@ impl NetworkLayout {
             let month = commit.timestamp.month();
             let key = (year, month);
 
-            if last_month.map_or(true, |lm| lm != key) {
+            if last_month != Some(key) {
                 last_month = Some(key);
                 let x = self.commit_to_x(i, total);
-                let label = format!("{}/{:02}", year, month);
+                let label = format!("{year}/{month:02}");
                 ticks.push(DateTick { x, label });
             }
         }

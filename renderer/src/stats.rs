@@ -2,7 +2,7 @@ use crate::data::CollectedData;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
-/// Rolling "code inventory" metrics for the stats overlay, one per visible_count.
+/// Rolling "code inventory" metrics for the stats overlay, one per `visible_count`.
 #[derive(Clone, Debug, Default)]
 pub struct FrameStats {
     pub total_branches: u32,
@@ -28,7 +28,7 @@ struct BranchState {
     merged: bool,
 }
 
-/// Pre-compute one `FrameStats` for every `visible_count` from 1..=commits.len().
+/// Pre-compute one `FrameStats` for every `visible_count` from `1..=commits.len()`.
 /// This is called once before the render loop and indexed per-frame.
 pub fn precompute_frame_stats(data: &CollectedData, default_branch: &str) -> Vec<FrameStats> {
     let num_commits = data.commits.len();
@@ -72,7 +72,7 @@ pub fn precompute_frame_stats(data: &CollectedData, default_branch: &str) -> Vec
             });
 
         state.commits += 1;
-        state.lines += (commit.insertions + commit.deletions) as u64;
+        state.lines += u64::from(commit.insertions + commit.deletions);
         state.files += commit.files_changed;
         state.last_commit_time = now;
 

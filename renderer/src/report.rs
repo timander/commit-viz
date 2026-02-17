@@ -35,23 +35,42 @@ pub fn render_report(
 
     // Header
     let repo_name = &data.metadata.repo;
-    text.draw_text(&mut pixmap, "commit-viz Statistics Report", 40.0, 50.0, 28.0, white);
+    text.draw_text(
+        &mut pixmap,
+        "commit-viz Statistics Report",
+        40.0,
+        50.0,
+        28.0,
+        white,
+    );
     text.draw_text(&mut pixmap, repo_name, 40.0, 85.0, 20.0, light);
 
     let date_range = format!(
         "{} to {}",
-        if data.metadata.date_range.start.is_empty() { "beginning" } else { &data.metadata.date_range.start },
-        if data.metadata.date_range.end.is_empty() { "present" } else { &data.metadata.date_range.end },
+        if data.metadata.date_range.start.is_empty() {
+            "beginning"
+        } else {
+            &data.metadata.date_range.start
+        },
+        if data.metadata.date_range.end.is_empty() {
+            "present"
+        } else {
+            &data.metadata.date_range.end
+        },
     );
     text.draw_text(&mut pixmap, &date_range, 40.0, 115.0, 16.0, dim);
 
-    let stats = match &data.statistics {
-        Some(s) => s,
-        None => {
-            text.draw_text(&mut pixmap, "No statistics available", 40.0, 180.0, 20.0, light);
-            pixmap.save_png(output_path)?;
-            return Ok(());
-        }
+    let Some(stats) = &data.statistics else {
+        text.draw_text(
+            &mut pixmap,
+            "No statistics available",
+            40.0,
+            180.0,
+            20.0,
+            light,
+        );
+        pixmap.save_png(output_path)?;
+        return Ok(());
     };
 
     // Summary stats line
@@ -65,8 +84,8 @@ pub fn render_report(
     text.draw_text(&mut pixmap, "Commits by Category", 40.0, 210.0, 20.0, white);
 
     let categories_ordered = [
-        "feature", "bugfix", "release", "refactor", "docs", "ci", "test",
-        "merge", "squash", "conflict", "other",
+        "feature", "bugfix", "release", "refactor", "docs", "ci", "test", "merge", "squash",
+        "conflict", "other",
     ];
     let max_count = categories_ordered
         .iter()
@@ -94,7 +113,14 @@ pub fn render_report(
         };
 
         // Label
-        text.draw_text(&mut pixmap, cat, 40.0, bar_y + bar_height - 4.0, 14.0, light);
+        text.draw_text(
+            &mut pixmap,
+            cat,
+            40.0,
+            bar_y + bar_height - 4.0,
+            14.0,
+            light,
+        );
 
         // Bar
         let bar_width = (count as f32 / max_count as f32) * (bar_area_right - bar_area_left);
@@ -118,7 +144,7 @@ pub fn render_report(
         }
 
         // Count + percentage
-        let label = format!("{} ({:.1}%)", count, pct);
+        let label = format!("{count} ({pct:.1}%)");
         text.draw_text(
             &mut pixmap,
             &label,
@@ -133,7 +159,14 @@ pub fn render_report(
 
     // --- Release cycle stats ---
     let rc_y = 540.0;
-    text.draw_text(&mut pixmap, "Release Cycle Analysis", 40.0, rc_y, 20.0, white);
+    text.draw_text(
+        &mut pixmap,
+        "Release Cycle Analysis",
+        40.0,
+        rc_y,
+        20.0,
+        white,
+    );
 
     let rc = &stats.release_cycles;
     if rc.count >= 2 {
@@ -169,12 +202,7 @@ pub fn render_report(
     let auth_x = 1000.0;
     text.draw_text(&mut pixmap, "Top Authors", auth_x, 210.0, 20.0, white);
 
-    let max_author_commits = stats
-        .top_authors
-        .first()
-        .map(|a| a.commits)
-        .unwrap_or(1)
-        .max(1);
+    let max_author_commits = stats.top_authors.first().map_or(1, |a| a.commits).max(1);
 
     for (i, author) in stats.top_authors.iter().take(15).enumerate() {
         let y = 245.0 + i as f32 * 28.0;

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
@@ -11,10 +11,10 @@ import click
 from commit_viz.config import load_config
 from commit_viz.models import CollectedData, Metadata
 from commit_viz.output import serialize
+from commit_viz.sources.change_flow import compute_change_flow
 from commit_viz.sources.clone import ensure_repo
 from commit_viz.sources.git import collect_git
 from commit_viz.sources.stats import compute_statistics
-from commit_viz.sources.change_flow import compute_change_flow
 
 
 @click.group()
@@ -47,7 +47,7 @@ def collect(config_path: str, output_path: str) -> None:
     metadata = Metadata(
         repo=repo_name,
         date_range={"start": config.date_range.start, "end": config.date_range.end},
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=datetime.now(UTC).isoformat(),
     )
 
     data = CollectedData(metadata=metadata)
@@ -60,7 +60,9 @@ def collect(config_path: str, output_path: str) -> None:
         data.branches = branches
         data.commits = commits
         data.merges = merges
-        click.echo(f"  Found {len(commits)} commits, {len(branches)} branches, {len(merges)} merges [{time.monotonic() - t0:.2f}s]")
+        click.echo(
+            f"  Found {len(commits)} commits, {len(branches)} branches, {len(merges)} merges [{time.monotonic() - t0:.2f}s]"
+        )
 
         # Phase 2+3: Statistics and change flow (concurrent)
         t0 = time.monotonic()
@@ -70,8 +72,10 @@ def collect(config_path: str, output_path: str) -> None:
             future_cf = pool.submit(compute_change_flow, commits, merges, data.branches)
             data.statistics = future_stats.result()
             data.statistics.change_flow = future_cf.result()
-        click.echo(f"  {data.statistics.unique_authors} authors, {data.statistics.commits_per_week} commits/week, "
-                    f"{data.statistics.change_flow.drought_count} droughts [{time.monotonic() - t0:.2f}s]")
+        click.echo(
+            f"  {data.statistics.unique_authors} authors, {data.statistics.commits_per_week} commits/week, "
+            f"{data.statistics.change_flow.drought_count} droughts [{time.monotonic() - t0:.2f}s]"
+        )
 
     # Phase 4: Serialization
     t0 = time.monotonic()

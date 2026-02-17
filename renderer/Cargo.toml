@@ -11,3 +11,22 @@ tiny-skia = "0.11"
 chrono = { version = "0.4", features = ["serde"] }
 fontdue = "0.9"
 rayon = "1.10"
+
+# ── Clippy lints ──────────────────────────────────────────────────────────────
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Selectively allow pedantic rules that produce too much noise
+module_name_repetitions = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+many_single_char_names = "allow"       # x, y, w, h, r are idiomatic for drawing code
+struct_field_names = "allow"           # parent_branch on Branch is intentional
+too_many_lines = "allow"               # render functions are necessarily long
+too_many_arguments = "allow"           # render_frame has many params by design
+cognitive_complexity = "allow"         # layout logic is inherently complex
+similar_names = "allow"                # main_y / margin_y etc. are intentional
